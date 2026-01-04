@@ -50,6 +50,11 @@ private:
     virtual void handleInput();
     virtual void renderFrame();
 
+    void renderUI();
+
+    //fbos
+
+    //fbos
     void createGBuffer();
     void createSSAOBuffer();
     void updateCamera(float deltaTime);
@@ -105,5 +110,22 @@ private:
     const float _lightMoveSpeed = 5.0f;
     const float _paramAdjustSpeed = 0.5f;
 
-    std::map<int, bool> _keyPressed;
+    // --- Sun / time of day 控制 ---
+    bool _sunAuto = true;              // 自动运行时间
+    float _timeOfDay = 12.0f;          // 当前时间（小时，0..24），初始中午
+    float _timeScale = 60.0f;          // 模拟速度：真实秒 -> 模拟分钟（例如 60 => 1s = 1min）
+    float _lastSunUpdate = 0.0f;       // 用于增量计算
+    glm::vec3 _sunDirection = glm::vec3(0.0f, -1.0f, 0.0f);
+    glm::vec3 _sunColor = glm::vec3(1.0f, 1.0f, 0.95f);
+    float _sunIntensity = 1.0f;
+};
+
+    // --- Sun / time of day 控制 ---
+    bool _sunAuto = true;              // 自动运行时间
+    float _timeOfDay = 12.0f;          // 当前时间（小时，0..24），初始中午
+    float _timeScale = 60.0f;          // 模拟速度：真实秒 -> 模拟分钟（例如 60 => 1s = 1min）
+    float _lastSunUpdate = 0.0f;       // 用于增量计算
+    glm::vec3 _sunDirection = glm::vec3(0.0f, -1.0f, 0.0f);
+    glm::vec3 _sunColor = glm::vec3(1.0f, 1.0f, 0.95f);
+    float _sunIntensity = 1.0f;
 };
