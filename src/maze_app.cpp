@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 #include <random>
-#include <iostream>
 #include <cstdlib>
 #include <cstdio>
 #include <direct.h>
@@ -25,7 +24,7 @@ void printCwd() {
     }
 }
 
-static const std::string gbufferVs ="shaders/gbuffer.vert";
+static const std::string gbufferVs = "shaders/gbuffer.vert";
 static const std::string gbufferFs = "shaders/gbuffer.frag";
 static const std::string quadVs = "shaders/quad.vert";
 static const std::string ssaoFs = "shaders/ssao.frag";
@@ -75,53 +74,56 @@ void MazeApp::initResources() {
 void MazeApp::createGBuffer() {
     glGenFramebuffers(1, &gBuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
-    // position
+
     glGenTextures(1, &gPosition);
     glBindTexture(GL_TEXTURE_2D, gPosition);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, _windowWidth, _windowHeight, 0, GL_RGB, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
-    // normal
+
     glGenTextures(1, &gNormal);
     glBindTexture(GL_TEXTURE_2D, gNormal);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, _windowWidth, _windowHeight, 0, GL_RGB, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
-    // albedo
+
     glGenTextures(1, &gAlbedo);
     glBindTexture(GL_TEXTURE_2D, gAlbedo);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, _windowWidth, _windowHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedo, 0);
-    // tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
+
     GLuint attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
     glDrawBuffers(3, attachments);
-    // depth renderbuffer
+
     glGenRenderbuffers(1, &rboDepth);
     glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, _windowWidth, _windowHeight);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cerr << "GBuffer Framebuffer not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void MazeApp::createSSAOBuffer() {
-    glGenFramebuffers(1, &ssaoFBO); glGenTextures(1, &ssaoColorBuffer);
+    glGenFramebuffers(1, &ssaoFBO);
+    glGenTextures(1, &ssaoColorBuffer);
     glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, _windowWidth, _windowHeight, 0, GL_RED, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) std::cerr << "SSAO FBO incomplete\n";
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "SSAO FBO incomplete\n";
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // blur
-    glGenFramebuffers(1, &ssaoBlurFBO); glGenTextures(1, &ssaoColorBufferBlur);
+    glGenFramebuffers(1, &ssaoBlurFBO);
+    glGenTextures(1, &ssaoColorBufferBlur);
     glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, _windowWidth, _windowHeight, 0, GL_RED, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -129,19 +131,20 @@ void MazeApp::createSSAOBuffer() {
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBufferBlur, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    //hdr
-    glGenFramebuffers(1, &hdrFBO); glGenTextures(1, &hdrColorBuffer);
+
+    glGenFramebuffers(1, &hdrFBO);
+    glGenTextures(1, &hdrColorBuffer);
     glBindTexture(GL_TEXTURE_2D, hdrColorBuffer);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, _windowWidth, _windowHeight, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hdrColorBuffer, 0);
-    // share depth with gBuffer's depth renderbuffer or create a new one; for simplicity reuse rboDepth:
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) std::cerr << "HDR FBO incomplete\n";
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cerr << "HDR FBO incomplete\n";
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    //kernel
+
     std::uniform_real_distribution<float> randomFloats(0.0f, 1.0f);
     std::default_random_engine generator;
     ssaoKernel.resize(64);
@@ -158,7 +161,7 @@ void MazeApp::createSSAOBuffer() {
         sample *= scale;
         ssaoKernel[i] = sample;
     }
-    // noise
+
     std::vector<glm::vec3> ssaoNoise;
     for (unsigned int i = 0; i < 16; i++) {
         glm::vec3 noise(
@@ -175,13 +178,11 @@ void MazeApp::createSSAOBuffer() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    //quad
+
     float quadVertices[] = {
-        // positions   // texcoords
         -1.0f,  1.0f,  0.0f, 1.0f,
         -1.0f, -1.0f,  0.0f, 0.0f,
          1.0f, -1.0f,  1.0f, 0.0f,
-
         -1.0f,  1.0f,  0.0f, 1.0f,
          1.0f, -1.0f,  1.0f, 0.0f,
          1.0f,  1.0f,  1.0f, 1.0f
@@ -196,7 +197,7 @@ void MazeApp::createSSAOBuffer() {
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glBindVertexArray(0);
-    //upload
+
     _ssaoShader->use();
     for (unsigned int i = 0; i < 64; ++i) {
         _ssaoShader->setUniformVec3("samples[" + std::to_string(i) + "]", ssaoKernel[i]);
@@ -208,42 +209,32 @@ void MazeApp::createSSAOBuffer() {
 }
 
 void MazeApp::updateCamera(float deltaTime) {
-    // 1️⃣ 获取鼠标当前位置
     double xpos, ypos;
     glfwGetCursorPos(_window, &xpos, &ypos);
 
-    // 2️⃣ 计算偏移量
     float deltaX = static_cast<float>(xpos - _windowWidth / 2);
-    float deltaY = static_cast<float>(_windowHeight / 2 - ypos); // 注意 Y 方向
+    float deltaY = static_cast<float>(_windowHeight / 2 - ypos);
 
-    // 3️⃣ 应用灵敏度
     deltaX *= _mouseSensitivity;
     deltaY *= _mouseSensitivity;
 
-    // 4️⃣ 更新 yaw / pitch
-    _yaw += -deltaX;      // 左右方向修正，鼠标向右看世界右转
+    _yaw += -deltaX;
     _pitch += deltaY;
 
-    // 5️⃣ 限制 pitch 范围 [-89, 89]
     if (_pitch > 89.0f) _pitch = 89.0f;
     if (_pitch < -89.0f) _pitch = -89.0f;
 
-    // 6️⃣ 根据 yaw / pitch 计算前向向量
     glm::vec3 front;
     front.x = cos(glm::radians(_yaw)) * cos(glm::radians(_pitch));
     front.y = sin(glm::radians(_pitch));
     front.z = sin(glm::radians(_yaw)) * cos(glm::radians(_pitch));
     front = glm::normalize(front);
 
-    // 7️⃣ 更新 Camera 四元数旋转
     _camera.transform.rotation = glm::quatLookAt(front, Transform::getDefaultUp());
 
-    // 8️⃣ 锁定光标回窗口中心
     glfwSetCursorPos(_window, _windowWidth / 2, _windowHeight / 2);
 
-    // 9️⃣ 处理键盘平移
     glm::vec3 dir(0.0f);
-    // 计算水平平移方向，只取前向的 x/z 分量
     glm::vec3 horizontalFront = _camera.transform.getFront();
     horizontalFront.y = 0.0f;
     horizontalFront = glm::normalize(horizontalFront);
@@ -258,59 +249,47 @@ void MazeApp::updateCamera(float deltaTime) {
     if (glm::length(dir) > 0.0f) dir = glm::normalize(dir);
 
     glm::vec3 proposedPos = _camera.transform.position + dir * _moveSpeed * deltaTime;
-    float playerRadius = 0.2f; // 玩家碰撞半径，可调
+    float playerRadius = 0.3f;  // 稍微增加碰撞半径，使碰撞检测更明显
 
-    // 遍历所有墙壁 AABB
+    bool collided = false;
     for (const auto& sm : _sceneModels) {
         if (sm.isWall) {
             if (sm.aabb.intersects(proposedPos, playerRadius)) {
-                dir = glm::vec3(0.0f); // 碰撞 → 阻止移动
+                collided = true;
                 break;
             }
         }
     }
 
-    // 最终移动
-    _camera.move(dir * _moveSpeed * deltaTime);
-
+    // 如果没有碰撞，则应用移动
+    if (!collided) {
+        _camera.move(dir * _moveSpeed * deltaTime);
+    }
 }
 
+void MazeApp::updateStars(float deltaTime) {
+    for (auto& sm : _sceneModels) {
+        if (sm.isStar) {
+            sm.starTime += deltaTime;
+
+            // 上下浮动：使用正弦波，范围更小，更贴近地面
+            float floatOffset = 0.2f * sin(sm.starTime * 2.0f);  // 减小浮动幅度
+            sm.transform.position.y = -1.5f + floatOffset;  // 基础高度降低，更贴近地面
+
+            // 自旋：绕Y轴旋转
+            float rotationAngle = sm.starTime * 1.5f;
+            sm.transform.rotation = glm::angleAxis(rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+        }
+    }
+}
 
 MazeApp::MazeApp(const Options& options)
     : Application(options), _camera(glm::radians(60.0f), static_cast<float>(options.windowWidth) / options.windowHeight, 0.1f, 100.0f) {
     glEnable(GL_DEPTH_TEST);
-
-    glEnable(GL_DEPTH_TEST);
     glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    _camera.transform.position = glm::vec3(0.0f, -1.7f, 10.5f);
-    _camera.transform.lookAt(glm::vec3(0.0f, 0.0f, 0.0f));
-
-    // 初始化时间相关变量
-    _lastFrameTime = 0.0f;
-    _lastSunUpdate = 0.0f;
-    _timeOfDay = 12.0f;      // 默认中午
-    _timeScale = 60.0f;      // 默认速度
-    _sunAuto = true;         // 默认自动
-
-    // 初始化按键状态
-    for (int i = 0; i <= GLFW_KEY_LAST; ++i) {
-        _keyPressed[i] = false;
-    }
-
-    // 初始化材质参数
-    exposure = 1.0f;
-    gammaVal = 2.2f;
-    ssaoRadius = 0.5f;
-    ssaoBias = 0.025f;
-    ambientStrength = 0.1f;
-    _materialSpecular = glm::vec3(0.3f);
-    _materialShininess = 32.0f;
-
-    // 在 MazeApp 构造函数里 glEnable(GL_DEPTH_TEST); 下面加
-    glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-    _camera.transform.position = glm::vec3(0.0f, -1.7f, 10.5f);
+    // 设置初始位置在起点 'S' 附近的空地
+    _camera.transform.position = glm::vec3(-20.0f, 0.0f, -12.0f);
     _camera.transform.lookAt(glm::vec3(0.0f, 0.0f, 0.0f));
 
     const char* vsCode =
@@ -360,19 +339,10 @@ MazeApp::MazeApp(const Options& options)
     _shader->attachFragmentShader(fsCode);
     _shader->link();
 
-
-    //init
     initResources();
     createGBuffer();
     createSSAOBuffer();
-    // 初始化 ImGui
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    ImGui::StyleColorsDark();
-    ImGui_ImplGlfw_InitForOpenGL(_window, true);
-    ImGui_ImplOpenGL3_Init("#version 330 core");
+
     try {
         const auto monsterModel = std::make_shared<Model>(
             loadModelFromFile(getAssetFullPath("obj/Monster.obj"), false));
@@ -382,30 +352,29 @@ MazeApp::MazeApp(const Options& options)
             loadModelFromFile(getAssetFullPath("obj/nike.obj"), true));
         const auto snowModel = std::make_shared<Model>(
             loadModelFromFile(getAssetFullPath("obj/snow_box.obj"), true));
+        const auto starModel = std::make_shared<Model>(
+            loadModelFromFile(getAssetFullPath("obj/star.obj"), true));
 
-        auto addInstance = [&](const std::shared_ptr<Model>& model, const glm::vec3& pos, const glm::vec3& color, const glm::vec3& scale = glm::vec3(1.0f)) {
-            SceneModel sm;
-            sm.model = model;
-            sm.transform.position = pos;
-            sm.transform.scale = scale;
-            sm.fallbackColor = color;
-            _sceneModels.push_back(std::move(sm));
-            };
-
-        const float cellSize = 1.5f;
+        // 扩大迷宫：cellSize 从 1.5 增加到 2.5
+        const float cellSize = 2.5f;
         const float wallY = -2.0f;
+        const float groundY = -2.0f;  // 地面高度
+
+        // 扩大的迷宫地图，增加出口
         const std::vector<std::string> maze = {
-            "###############",
-            "#S   #     #  #",
-            "# ## ### # ## #",
-            "#    #   #    #",
-            "### #### ## ###",
-            "#   #    #   ##",
-            "## ### #### # #",
-            "#   #     #   #",
-            "#   #######   #",
-            "#   #     #   #",
-            "############E##",
+            "#####################",
+            "S   #    #     #    #",
+            "# ####   ###   #  # #",
+            "#    #       # #  # #",
+            "###  ####  ### ## # #",
+            "#       #    #  # #  ",  // 右侧出口
+            "# ####  #### ## # # #",
+            "#    #       #    # #",
+            "#    ### #####    # #",
+            "#    #       #    # #",
+            "# ####   ### #### # #",
+            "#    #   #       ## #",
+            "################### E",  // 底部出口（终点）
         };
 
         const int rows = static_cast<int>(maze.size());
@@ -413,30 +382,7 @@ MazeApp::MazeApp(const Options& options)
         const float startX = -0.5f * cellSize * static_cast<float>(cols - 1);
         const float startZ = -0.5f * cellSize * static_cast<float>(rows - 1);
 
-        for (int r = 0; r < rows; ++r) {
-            for (int c = 0; c < cols; ++c) {
-                if (maze[r][c] == '#') {
-                    const glm::vec3 pos = glm::vec3(
-                        startX + static_cast<float>(c) * cellSize, wallY,
-                        startZ + static_cast<float>(r) * cellSize);
-                    SceneModel sm;
-                    sm.model = snowModel;
-                    sm.transform.position = pos;
-                    sm.transform.scale = glm::vec3(1.8f);  // 放大到 1.8
-                    sm.fallbackColor = glm::vec3(0.8f);
-                    sm.isWall = true;
-
-                    //初始化 AABB
-                    glm::vec3 halfScale = sm.transform.scale * 0.5f;
-                    sm.aabb.min = sm.transform.position - halfScale;
-                    sm.aabb.max = sm.transform.position + halfScale;
-
-                    _sceneModels.push_back(std::move(sm));
-                }
-
-            }
-        }
-
+        // 辅助函数：将格子坐标转换为世界坐标
         const auto cellToWorld = [&](int c, int r, float y) -> glm::vec3 {
             return glm::vec3(
                 startX + static_cast<float>(c) * cellSize,
@@ -444,36 +390,111 @@ MazeApp::MazeApp(const Options& options)
                 startZ + static_cast<float>(r) * cellSize);
             };
 
-        // Judy at start (near 'S')
+        // 创建墙壁 - 放大 snow_box 使其完全贴紧
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                if (maze[r][c] == '#') {
+                    const glm::vec3 pos = cellToWorld(c, r, wallY);
+                    SceneModel sm;
+                    sm.model = snowModel;
+                    sm.transform.position = pos;
+                    sm.transform.scale = glm::vec3(2.8f);  // 进一步放大，确保完全闭合
+                    sm.fallbackColor = glm::vec3(0.8f);
+                    sm.isWall = true;
+
+                    // 碰撞盒应该基于 cellSize
+                    float halfCell = cellSize * 0.45f;
+                    sm.aabb.min = glm::vec3(pos.x - halfCell, wallY - 1.0f, pos.z - halfCell);
+                    sm.aabb.max = glm::vec3(pos.x + halfCell, wallY + 2.0f, pos.z + halfCell);
+
+                    _sceneModels.push_back(std::move(sm));
+                }
+            }
+        }
+
+        // 在空地放置三个角色 - 确保它们在空地且站在地面上
+        // 检查迷宫找几个确定的空地位置
+        std::cout << "\n=== Character Placement ===" << std::endl;
+
+        // Judy - 起点附近 (1, 2)
         {
             SceneModel judy;
             judy.model = judyModel;
-            judy.transform.position = cellToWorld(1, 1, 0.0f);
-            judy.transform.scale = glm::vec3(0.5f);  // 缩小到 50%
-            judy.transform.lookAt(cellToWorld(3, 3, 0.0f));
+            judy.transform.position = cellToWorld(2, 1, groundY);  // 直接放在地面上
+            judy.transform.scale = glm::vec3(1.0f);
+            judy.transform.lookAt(cellToWorld(4, 1, groundY));
             judy.fallbackColor = glm::vec3(0.7f, 0.7f, 0.9f);
+            std::cout << "Judy at grid(1,2) -> world(" << judy.transform.position.x << ", "
+                << judy.transform.position.y << ", " << judy.transform.position.z << ")" << std::endl;
             _sceneModels.push_back(std::move(judy));
         }
 
-        // Nike at goal (near 'E')
+        // Nike - 在通道中 (1, 6)
         {
             SceneModel nike;
             nike.model = nikeModel;
-            nike.transform.position = cellToWorld(cols - 3, rows - 2, 0.0f);
-            nike.transform.scale = glm::vec3(0.6f);  // 缩小到 60%
+            nike.transform.position = cellToWorld(6, 1, groundY);  // 直接放在地面上
+            nike.transform.scale = glm::vec3(1.2f);
             nike.fallbackColor = glm::vec3(0.9f, 0.9f, 0.9f);
+            std::cout << "Nike at grid(1,6) -> world(" << nike.transform.position.x << ", "
+                << nike.transform.position.y << ", " << nike.transform.position.z << ")" << std::endl;
             _sceneModels.push_back(std::move(nike));
         }
 
-        // Monster patrol near center
+        // Monster - 在另一个通道 (3, 2)
         {
             SceneModel monster;
             monster.model = monsterModel;
-            monster.transform.position = cellToWorld(cols / 2, rows / 2, 0.0f);
-            monster.transform.scale = glm::vec3(0.4f);  // 缩小到 40%
+            monster.transform.position = cellToWorld(2, 3, groundY);  // 直接放在地面上
+            monster.transform.scale = glm::vec3(1.5f);
             monster.fallbackColor = glm::vec3(0.8f, 0.7f, 0.6f);
+            std::cout << "Monster at grid(3,2) -> world(" << monster.transform.position.x << ", "
+                << monster.transform.position.y << ", " << monster.transform.position.z << ")" << std::endl;
             _sceneModels.push_back(std::move(monster));
         }
+
+        // 放置更多星星在迷宫的空地上（避免与墙壁重合）
+        // 只在空格' '的位置放置星星
+        std::vector<std::pair<int, int>> starPositions = {
+            // 起点区域的空地
+            {1, 3}, {1, 4}, {1, 5},
+            // 左上角空地
+            {2, 7}, {3, 8}, {3, 3},{3,10},{3,11},{3,19},
+            // 中间通道
+            {4, 3}, {5, 5}, {6, 5},{5,10},{5,11},{5,19},
+            // 右侧区域空地
+            {1, 14}, {2, 16}, {3, 17},
+            // 中下部空地
+            {7, 3}, {7, 4}, {8, 3},{8,15},{8,16},{9,6},{9,7},{9,8},{9,14},{9,15},{9,19},
+            // 底部空地
+            {10, 6},{10,7}, { 10, 13 }, {11, 3},{11,4},{11,10}, { 11, 14 }
+        };
+
+        std::cout << "\n=== Star Positions ===" << std::endl;
+        for (const auto& pos : starPositions) {
+            // 验证位置是否为空地
+            if (pos.first >= 0 && pos.first < rows &&
+                pos.second >= 0 && pos.second < cols &&
+                maze[pos.first][pos.second] == ' ') {
+
+                SceneModel star;
+                star.model = starModel;
+                glm::vec3 worldPos = cellToWorld(pos.second, pos.first, groundY + 0.5f);  // 距离地面0.5单位
+                star.transform.position = worldPos;
+                star.transform.scale = glm::vec3(0.5f);  // 放大星星
+                star.fallbackColor = glm::vec3(1.0f, 0.95f, 0.3f); // 亮黄色
+                star.isStar = true;
+                star.starTime = static_cast<float>(pos.first * 3 + pos.second * 2) * 0.3f;
+                std::cout << "Star at grid(" << pos.first << "," << pos.second
+                    << ") -> world(" << worldPos.x << ", " << worldPos.y << ", " << worldPos.z << ")" << std::endl;
+                _sceneModels.push_back(std::move(star));
+            }
+            else {
+                std::cout << "WARNING: Star position (" << pos.first << "," << pos.second
+                    << ") is blocked or out of bounds!" << std::endl;
+            }
+        }
+        std::cout << "Total stars placed: " << starPositions.size() << std::endl;
 
     }
     catch (const std::exception& e) {
@@ -488,136 +509,23 @@ MazeApp::~MazeApp() {
     ImGui::DestroyContext();
 }
 
-void MazeApp::updateSun(float currentTime) {
-    if (_lastSunUpdate <= 0.0f) _lastSunUpdate = currentTime;
-
-    float dt = currentTime - _lastSunUpdate;
-    _lastSunUpdate = currentTime;
-
-    if (_sunAuto) {
-        _timeOfDay += dt * _timeScale / 60.0f;
-    }
-
-    // 归一化时间
-    while (_timeOfDay >= 24.0f) _timeOfDay -= 24.0f;
-    while (_timeOfDay < 0.0f) _timeOfDay += 24.0f;
-
-    float t = _timeOfDay / 24.0f;
-    float azimuth = t * 2.0f * glm::pi<float>();
-    constexpr float maxElev = glm::radians(85.0f); // 更高的最大仰角
-    float raw = sin(t * 2.0f * glm::pi<float>()); // -1..1
-    float curve = pow(raw, 0.9f); // 指数 <1 会让中间更宽，更接近平顶（可调）
-    float elev = glm::sign(raw) * fabs(curve) * maxElev;
-
-    // 计算从场景指向太阳的方向
-    glm::vec3 sunPos;
-    sunPos.x = cos(elev) * cos(azimuth);
-    sunPos.y = sin(elev);
-    sunPos.z = cos(elev) * sin(azimuth);
-
-    // 光照方向：从场景指向光源
-    _sunDirection = glm::normalize(sunPos);
-
-    // 颜色与强度
-    float h = glm::clamp((sunPos.y + 0.1f) / 1.1f, 0.0f, 1.0f);
-    glm::vec3 sunriseColor = glm::vec3(1.0f, 0.45f, 0.2f);
-    glm::vec3 noonColor = glm::vec3(1.0f, 1.0f, 0.95f);
-    _sunColor = glm::mix(sunriseColor, noonColor, h);
-
-    float baseIntensity = glm::mix(0.2f, 1.0f, h);
-    _sunIntensity = pow(baseIntensity, 0.9f) * 2.0f;
-}
-
-void MazeApp::renderUI() {
-    // 每帧开始 ImGui
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
-
-    // 主控制面板
-    ImGui::Begin("Lighting & Rendering Control");
-
-    ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-
-    ImGui::Separator();
-    ImGui::Text("Time of Day Simulation");
-
-    // 自动/手动切换
-    ImGui::Checkbox("Auto Time", &_sunAuto);
-
-    // 时间滑条（24 小时制）
-    ImGui::SliderFloat("Time (hours)", &_timeOfDay, 0.0f, 24.0f, "%.2f");
-
-    // 时间速度
-    ImGui::SliderFloat("Time Scale (min/sec)", &_timeScale, 1.0f, 360.0f, "%.1f");
-
-    if (ImGui::Button("Reset to Noon")) {
-        _timeOfDay = 12.0f;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Reset to Midnight")) {
-        _timeOfDay = 0.0f;
-    }
-
-    ImGui::Separator();
-    ImGui::Text("Sun Properties");
-    ImGui::ColorEdit3("Sun Color", glm::value_ptr(_sunColor));
-    ImGui::SliderFloat("Sun Intensity", &_sunIntensity, 0.0f, 5.0f);
-    ImGui::Text("Sun Direction: (%.2f, %.2f, %.2f)", _sunDirection.x, _sunDirection.y, _sunDirection.z);
-
-    ImGui::Separator();
-    ImGui::Text("HDR & Tone Mapping");
-    ImGui::SliderFloat("Exposure", &exposure, 0.01f, 5.0f);
-    ImGui::SliderFloat("Gamma", &gammaVal, 0.5f, 3.0f);
-
-    ImGui::Separator();
-    ImGui::Text("SSAO");
-    ImGui::SliderFloat("SSAO Radius", &ssaoRadius, 0.01f, 2.0f);
-    ImGui::SliderFloat("SSAO Bias", &ssaoBias, 0.0f, 0.1f);
-
-    ImGui::Separator();
-    ImGui::Text("Material & Ambient");
-    ImGui::SliderFloat("Ambient Strength", &ambientStrength, 0.0f, 1.0f);
-    ImGui::ColorEdit3("Specular Color", glm::value_ptr(_materialSpecular));
-    ImGui::SliderFloat("Shininess", &_materialShininess, 1.0f, 256.0f);
-
-    ImGui::Separator();
-    if (ImGui::Button("Reset All to Defaults")) {
-        _timeOfDay = 12.0f;
-        _timeScale = 60.0f;
-        _sunAuto = true;
-        exposure = 1.0f;
-        gammaVal = 2.2f;
-        ssaoRadius = 0.5f;
-        ssaoBias = 0.025f;
-        ambientStrength = 0.1f;
-        _materialSpecular = glm::vec3(0.3f);
-        _materialShininess = 32.0f;
-    }
-
-    ImGui::End();
-
-    // 渲染 ImGui
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-}
-
 void MazeApp::renderFrame() {
     float currentFrame = static_cast<float>(glfwGetTime());
     float deltaTime = currentFrame - _lastFrameTime;
     _lastFrameTime = currentFrame;
 
     updateCamera(deltaTime);
-    updateSun(currentFrame);
+    updateStars(deltaTime);  // 更新星星动画
 
     showFpsInWindowTitle();
-
-    // 格式化时间 hh:mm
-    int hour = static_cast<int>(floor(_timeOfDay)) % 24;
-    int minute = static_cast<int>(floor((_timeOfDay - floor(_timeOfDay)) * 60.0f));
     std::ostringstream title;
-    title << "Maze | Time: " << std::setfill('0') << std::setw(2) << hour << ":" << std::setw(2) << minute
-        << (_sunAuto ? " [Auto]" : " [Manual]");
+    title << "Maze | FPS: " << static_cast<int>(1.0f / deltaTime)
+        << " | Light(" << std::fixed << std::setprecision(1)
+        << _lightPos.x << "," << _lightPos.y << "," << _lightPos.z << ")"
+        << " | Intensity:" << _lightIntensity
+        << " | Exposure:" << exposure
+        << " | SSAO:" << ssaoRadius
+        << " | Ambient:" << ambientStrength;
     glfwSetWindowTitle(_window, title.str().c_str());
 
     glClearColor(_clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a);
@@ -631,9 +539,7 @@ void MazeApp::renderFrame() {
     _shader->setUniformMat4("uProj", proj);
     _shader->setUniformInt("uDiffuse", 0);
 
-
-    // 1. Geometry pass: render scene into g-buffer
-    // 进入几何通道
+    // 1. Geometry pass
     glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
@@ -641,7 +547,6 @@ void MazeApp::renderFrame() {
     _gBufferShader->use();
     glm::mat4 projection = _camera.getProjectionMatrix();
 
-    // 全局 view/projection
     _gBufferShader->setUniformMat4("view", view);
     _gBufferShader->setUniformMat4("projection", projection);
 
@@ -661,7 +566,6 @@ void MazeApp::renderFrame() {
             _gBufferShader->setUniformVec3("fallbackColor", finalColor);
             _gBufferShader->setUniformBool("useAlbedoTexture", hasTexture ? true : false);
 
-            // 绑定纹理到 unit 0
             glActiveTexture(GL_TEXTURE0);
             if (hasTexture) {
                 mesh.diffuseTexture->bind();
@@ -670,7 +574,6 @@ void MazeApp::renderFrame() {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
 
-            // 绘制
             glBindVertexArray(mesh.vao);
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(mesh.indexCount), GL_UNSIGNED_INT, 0);
             glBindVertexArray(0);
@@ -721,42 +624,18 @@ void MazeApp::renderFrame() {
     glBindVertexArray(0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-
-    // 调试输出（可选）
-    static int frameCount = 0;
-    if (frameCount++ % 60 == 0) { // 每秒输出一次
-        std::cout << "Sun - Dir: (" << _sunDirection.x << ", "
-            << _sunDirection.y << ", " << _sunDirection.z
-            << ") Color: (" << _sunColor.r << ", " << _sunColor.g << ", " << _sunColor.b
-            << ") Intensity: " << _sunIntensity << std::endl;
-    }
-    // 4. Lighting pass 使用动态太阳光
+    // 4. Lighting pass 
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     _lightingShader->use();
-
-    //设置太阳光（平行光）
-    _lightingShader->setUniformInt("lightType", 1); // 1 = directional
-    _lightingShader->setUniformVec3("lightDir", _sunDirection);
-    _lightingShader->setUniformVec3("lightColor", _sunColor * _sunIntensity);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, gPosition);
-    _lightingShader->setUniformInt("gPosition", 0);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, gNormal);
-    _lightingShader->setUniformInt("gNormal", 1);
-
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, gAlbedo);
-    _lightingShader->setUniformInt("gAlbedo", 2);
-
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
-    _lightingShader->setUniformInt("ssao", 3);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, gPosition); _lightingShader->setUniformInt("gPosition", 0);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, gNormal);   _lightingShader->setUniformInt("gNormal", 1);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, gAlbedo);   _lightingShader->setUniformInt("gAlbedo", 2);
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur); _lightingShader->setUniformInt("ssao", 3);
 
     _lightingShader->setUniformVec3("viewPos", _camera.transform.position);
+    _lightingShader->setUniformVec3("lightPos", _lightPos);
+    _lightingShader->setUniformVec3("lightColor", _lightColor * _lightIntensity);
     _lightingShader->setUniformFloat("ambientStrength", ambientStrength);
     _lightingShader->setUniformVec3("materialSpecular", _materialSpecular);
     _lightingShader->setUniformFloat("materialShininess", _materialShininess);
@@ -765,7 +644,6 @@ void MazeApp::renderFrame() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
 
     // 5. HDR Tonemap + Gamma to default framebuffer
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -776,23 +654,18 @@ void MazeApp::renderFrame() {
     glBindVertexArray(quadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
-
-    renderUI();
 }
 
 void MazeApp::handleInput() {
-    //每一帧轮询键盘状态（关键！）
     for (int i = 0; i <= GLFW_KEY_LAST; ++i) {
         _input.keyboard.keyStates[i] = glfwGetKey(_window, i);
     }
 
-    //ESC 退出
     if (_input.keyboard.keyStates[GLFW_KEY_ESCAPE] == GLFW_PRESS) {
         glfwSetWindowShouldClose(_window, true);
         return;
     }
 
-    //窗口 resize 后更新相机 aspect
     if (_windowReized) {
         _camera.aspect =
             static_cast<float>(_windowWidth) / static_cast<float>(_windowHeight);
@@ -801,59 +674,65 @@ void MazeApp::handleInput() {
 
     float deltaTime = static_cast<float>(glfwGetTime()) - _lastFrameTime;
 
-    auto safeKeyPress = [&](int key) -> bool {
-        if (key < 0 || key > GLFW_KEY_LAST) return false;
-        return _input.keyboard.keyStates[key] == GLFW_PRESS && !_keyPressed[key];
-        };
-
-    auto safeKeyRelease = [&](int key) -> bool {
-        if (key < 0 || key > GLFW_KEY_LAST) return false;
-        return _input.keyboard.keyStates[key] == GLFW_RELEASE;
-        };
-
-    // 切换自动/手动
-    if (safeKeyPress(GLFW_KEY_T)) {
-        _sunAuto = !_sunAuto;
-        _keyPressed[GLFW_KEY_T] = true;
+    if (_input.keyboard.keyStates[GLFW_KEY_KP_4] == GLFW_PRESS) {
+        _lightPos.x -= _lightMoveSpeed * deltaTime;
     }
-    if (safeKeyRelease(GLFW_KEY_T)) _keyPressed[GLFW_KEY_T] = false;
-
-    // 手动时间调整
-    if (!_sunAuto) {
-        if (safeKeyPress(GLFW_KEY_PERIOD)) { // '>'
-            _timeOfDay += 1.0f;
-            _keyPressed[GLFW_KEY_PERIOD] = true;
-        }
-        if (safeKeyPress(GLFW_KEY_COMMA)) { // '<'
-            _timeOfDay -= 1.0f;
-            _keyPressed[GLFW_KEY_COMMA] = true;
-        }
-        if (safeKeyRelease(GLFW_KEY_PERIOD)) _keyPressed[GLFW_KEY_PERIOD] = false;
-        if (safeKeyRelease(GLFW_KEY_COMMA)) _keyPressed[GLFW_KEY_COMMA] = false;
-
-        if (_input.keyboard.keyStates[GLFW_KEY_PAGE_UP] == GLFW_PRESS) {
-            _timeOfDay += 0.1f;
-        }
-        if (_input.keyboard.keyStates[GLFW_KEY_PAGE_DOWN] == GLFW_PRESS) {
-            _timeOfDay -= 0.1f;
-        }
-
-        // 归一化
-        if (_timeOfDay >= 24.0f) _timeOfDay = fmod(_timeOfDay, 24.0f);
-        if (_timeOfDay < 0.0f) _timeOfDay = fmod(_timeOfDay, 24.0f) + 24.0f;
+    if (_input.keyboard.keyStates[GLFW_KEY_KP_6] == GLFW_PRESS) {
+        _lightPos.x += _lightMoveSpeed * deltaTime;
+    }
+    if (_input.keyboard.keyStates[GLFW_KEY_KP_8] == GLFW_PRESS) {
+        _lightPos.z -= _lightMoveSpeed * deltaTime;
+    }
+    if (_input.keyboard.keyStates[GLFW_KEY_KP_2] == GLFW_PRESS) {
+        _lightPos.z += _lightMoveSpeed * deltaTime;
+    }
+    if (_input.keyboard.keyStates[GLFW_KEY_KP_7] == GLFW_PRESS) {
+        _lightPos.y += _lightMoveSpeed * deltaTime;
+    }
+    if (_input.keyboard.keyStates[GLFW_KEY_KP_9] == GLFW_PRESS) {
+        _lightPos.y -= _lightMoveSpeed * deltaTime;
     }
 
-    // timeScale 调整
-    if (safeKeyPress(GLFW_KEY_U)) {
-        _timeScale *= 2.0f;
-        if (_timeScale > 3600.0f) _timeScale = 3600.0f;
-        _keyPressed[GLFW_KEY_U] = true;
+    if (_input.keyboard.keyStates[GLFW_KEY_1] == GLFW_PRESS && !_keyPressed[GLFW_KEY_1]) {
+        _lightIntensity = glm::max(0.1f, _lightIntensity - 0.1f);
+        _keyPressed[GLFW_KEY_1] = true;
     }
-    if (safeKeyPress(GLFW_KEY_J)) {
-        _timeScale *= 0.5f;
-        if (_timeScale < 1.0f) _timeScale = 1.0f;
-        _keyPressed[GLFW_KEY_J] = true;
+    if (_input.keyboard.keyStates[GLFW_KEY_2] == GLFW_PRESS && !_keyPressed[GLFW_KEY_2]) {
+        _lightIntensity += 0.1f;
+        _keyPressed[GLFW_KEY_2] = true;
     }
-    if (safeKeyRelease(GLFW_KEY_U)) _keyPressed[GLFW_KEY_U] = false;
-    if (safeKeyRelease(GLFW_KEY_J)) _keyPressed[GLFW_KEY_J] = false;
+
+    if (_input.keyboard.keyStates[GLFW_KEY_3] == GLFW_PRESS && !_keyPressed[GLFW_KEY_3]) {
+        exposure = glm::max(0.1f, exposure - 0.1f);
+        _keyPressed[GLFW_KEY_3] = true;
+    }
+    if (_input.keyboard.keyStates[GLFW_KEY_4] == GLFW_PRESS && !_keyPressed[GLFW_KEY_4]) {
+        exposure += 0.1f;
+        _keyPressed[GLFW_KEY_4] = true;
+    }
+
+    if (_input.keyboard.keyStates[GLFW_KEY_5] == GLFW_PRESS && !_keyPressed[GLFW_KEY_5]) {
+        ssaoRadius = glm::max(0.1f, ssaoRadius - 0.05f);
+        _keyPressed[GLFW_KEY_5] = true;
+    }
+    if (_input.keyboard.keyStates[GLFW_KEY_6] == GLFW_PRESS && !_keyPressed[GLFW_KEY_6]) {
+        ssaoRadius += 0.05f;
+        _keyPressed[GLFW_KEY_6] = true;
+    }
+
+    if (_input.keyboard.keyStates[GLFW_KEY_7] == GLFW_PRESS && !_keyPressed[GLFW_KEY_7]) {
+        ambientStrength = glm::max(0.0f, ambientStrength - 0.05f);
+        _keyPressed[GLFW_KEY_7] = true;
+    }
+    if (_input.keyboard.keyStates[GLFW_KEY_8] == GLFW_PRESS && !_keyPressed[GLFW_KEY_8]) {
+        ambientStrength = glm::min(1.0f, ambientStrength + 0.05f);
+        _keyPressed[GLFW_KEY_8] = true;
+    }
+
+    for (int key : {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4,
+        GLFW_KEY_5, GLFW_KEY_6, GLFW_KEY_7, GLFW_KEY_8}) {
+        if (_input.keyboard.keyStates[key] == GLFW_RELEASE) {
+            _keyPressed[key] = false;
+        }
+    }
 }

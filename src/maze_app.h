@@ -7,28 +7,21 @@
 #include "model.h"
 #include <memory>
 #include <vector>
-#include<map>
+#include <map>
 #include <cmath>
 #include <sstream>
 #include <iomanip>
 
-// High-level app that builds a snow-box maze and places Judy/Nike/Monster models.
 class MazeApp : public Application {
 public:
     MazeApp(const Options& options);
-
     ~MazeApp();
-
-    void updateSun(float currentTime);
-
-    void renderScene();
 
 private:
     struct AABB {
         glm::vec3 min;
         glm::vec3 max;
 
-        // 简单球-盒碰撞检测
         bool intersects(const glm::vec3& point, float radius) const {
             glm::vec3 clamped = glm::clamp(point, min, max);
             return glm::length(clamped - point) < radius;
@@ -41,36 +34,29 @@ private:
         glm::vec3 fallbackColor = glm::vec3(0.8f);
         AABB aabb;
         bool isWall = false;
+        bool isStar = false;  // 新增：标记是否为星星
+        float starTime = 0.0f;  // 新增：星星动画时间
     };
 
     PerspectiveCamera _camera;
     std::unique_ptr<GLSLProgram> _shader;
     std::vector<SceneModel> _sceneModels;
 
-
-    float _yaw = -90.0f;   // 水平方向角度，初始朝 -Z
-    float _pitch = 0.0f;   // 垂直方向角度
+    float _yaw = -90.0f;
+    float _pitch = 0.0f;
     float _moveSpeed = 2.0f;
     float _mouseSensitivity = 0.02f;
 
     virtual void handleInput();
-
     virtual void renderFrame();
 
-    void renderUI();
-
-    //fbos
     void createGBuffer();
-
     void createSSAOBuffer();
-
-
     void updateCamera(float deltaTime);
+    void updateStars(float deltaTime);  // 新增：更新星星动画
 
     float _lastFrameTime = 0.0f;
 
-    //光照效果实现
-        //
     struct GBufferUniforms {
         GLint model = -1;
         GLint view = -1;
@@ -87,7 +73,6 @@ private:
     std::unique_ptr<GLSLProgram> _lightingShader;
     std::unique_ptr<GLSLProgram> _hdrShader;
 
-    // FBOs & textures
     GLuint gBuffer = 0;
     GLuint gPosition = 0, gNormal = 0, gAlbedo = 0;
     GLuint rboDepth = 0;
@@ -98,17 +83,13 @@ private:
     GLuint hdrFBO = 0;
     GLuint hdrColorBuffer = 0;
 
-    // full-screen quad
     GLuint quadVAO = 0, quadVBO = 0;
 
-    // SSAO kernel & noise
     std::vector<glm::vec3> ssaoKernel;
     GLuint noiseTexture = 0;
 
-    //函数
     void initResources();
 
-    // parameters
     float ssaoRadius = 0.5f;
     float ssaoBias = 0.025f;
     float ambientStrength = 0.12f;
@@ -119,22 +100,10 @@ private:
     glm::vec3 _materialSpecular = glm::vec3(0.5f);
     float _materialShininess = 32.0f;
 
-  
-    float _lightIntensity = 1.0f;  // 新增：光强倍数
+    float _lightIntensity = 1.0f;
 
-    // 参数调节速度
-    const float _lightMoveSpeed = 5.0f;      // 光源移动速度 (单位/秒)
-    const float _paramAdjustSpeed = 0.5f;    // 参数增减速度
+    const float _lightMoveSpeed = 5.0f;
+    const float _paramAdjustSpeed = 0.5f;
 
-    // 键盘状态去抖（防止连续按键导致疯狂变化）
     std::map<int, bool> _keyPressed;
-
-    // --- Sun / time of day 控制 ---
-    bool _sunAuto = true;              // 自动运行时间
-    float _timeOfDay = 12.0f;          // 当前时间（小时，0..24），初始中午
-    float _timeScale = 60.0f;          // 模拟速度：真实秒 -> 模拟分钟（例如 60 => 1s = 1min）
-    float _lastSunUpdate = 0.0f;       // 用于增量计算
-    glm::vec3 _sunDirection = glm::vec3(0.0f, -1.0f, 0.0f);
-    glm::vec3 _sunColor = glm::vec3(1.0f, 1.0f, 0.95f);
-    float _sunIntensity = 1.0f;
 };
