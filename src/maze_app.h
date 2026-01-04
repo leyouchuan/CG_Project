@@ -23,8 +23,15 @@ private:
         glm::vec3 max;
 
         bool intersects(const glm::vec3& point, float radius) const {
-            glm::vec3 clamped = glm::clamp(point, min, max);
-            return glm::length(clamped - point) < radius;
+            // 找到 AABB 上距离点最近的点
+            glm::vec3 closest;
+            closest.x = glm::clamp(point.x, min.x, max.x);
+            closest.y = glm::clamp(point.y, min.y, max.y);
+            closest.z = glm::clamp(point.z, min.z, max.z);
+
+            // 计算距离
+            float distanceSquared = glm::dot(point - closest, point - closest);
+            return distanceSquared < (radius * radius);
         }
     };
 
@@ -50,11 +57,6 @@ private:
     virtual void handleInput();
     virtual void renderFrame();
 
-    void renderUI();
-
-    //fbos
-
-    //fbos
     void createGBuffer();
     void createSSAOBuffer();
     void updateCamera(float deltaTime);
@@ -110,22 +112,5 @@ private:
     const float _lightMoveSpeed = 5.0f;
     const float _paramAdjustSpeed = 0.5f;
 
-    // --- Sun / time of day 控制 ---
-    bool _sunAuto = true;              // 自动运行时间
-    float _timeOfDay = 12.0f;          // 当前时间（小时，0..24），初始中午
-    float _timeScale = 60.0f;          // 模拟速度：真实秒 -> 模拟分钟（例如 60 => 1s = 1min）
-    float _lastSunUpdate = 0.0f;       // 用于增量计算
-    glm::vec3 _sunDirection = glm::vec3(0.0f, -1.0f, 0.0f);
-    glm::vec3 _sunColor = glm::vec3(1.0f, 1.0f, 0.95f);
-    float _sunIntensity = 1.0f;
-};
-
-    // --- Sun / time of day 控制 ---
-    bool _sunAuto = true;              // 自动运行时间
-    float _timeOfDay = 12.0f;          // 当前时间（小时，0..24），初始中午
-    float _timeScale = 60.0f;          // 模拟速度：真实秒 -> 模拟分钟（例如 60 => 1s = 1min）
-    float _lastSunUpdate = 0.0f;       // 用于增量计算
-    glm::vec3 _sunDirection = glm::vec3(0.0f, -1.0f, 0.0f);
-    glm::vec3 _sunColor = glm::vec3(1.0f, 1.0f, 0.95f);
-    float _sunIntensity = 1.0f;
+    std::map<int, bool> _keyPressed;
 };
