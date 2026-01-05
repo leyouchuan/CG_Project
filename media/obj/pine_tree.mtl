@@ -1,0 +1,14 @@
+# Material file for winter pine tree
+
+newmtl trunk
+Ka 0.3 0.2 0.1      # Dark brown ambient
+Kd 0.4 0.3 0.15     # Brown trunk
+Ks 0.1 0.1 0.1      # Low specular
+illum 2
+
+newmtl snow_branches
+Ka 0.8 0.8 0.9      # Cold white ambient
+Kd 0.95 0.96 1.0    # Snow white
+Ks 0.4 0.4 0.5      # Snow specular (slightly blue)
+illum 2
+Ns 60               # Shiny snow
