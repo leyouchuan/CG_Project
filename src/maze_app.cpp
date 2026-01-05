@@ -16,7 +16,6 @@
 #include <fstream>
 
 
-
 void printCwd() {
     char buf[1024];
     if (getcwd(buf, sizeof(buf)) != nullptr) {
@@ -384,14 +383,15 @@ void MazeApp::updateStars(float deltaTime) {
             float combinedGlow = (glowIntensity1 * 0.4f + glowIntensity2 * 0.3f + glowIntensity3 * 0.3f);
             
             // 丰富的星光颜色变化：彩虹般的渐变效果
-            float redPhase = sin(sm.starTime * 2.0f + sm.transform.position.x * 0.1f);
-            float greenPhase = sin(sm.starTime * 2.3f + sm.transform.position.z * 0.1f + 1.0f);
-            float bluePhase = sin(sm.starTime * 1.7f + sm.transform.position.x * 0.05f + sm.transform.position.z * 0.05f + 2.0f);
-            
+            float goldPhase = sin(sm.starTime * 2.5f + sm.transform.position.x * 0.1f);
+            float redPhase = 0.9f + 0.1f * goldPhase;
+            float greenPhase = 0.7f + 0.2f * goldPhase;
+            float bluePhase = 0.1f + 0.1f * sin(sm.starTime * 4.0f); // 微量蓝波动
+
             sm.fallbackColor = glm::vec3(
-                1.0f + 0.15f * redPhase,      // 红色分量动态变化
-                0.95f + 0.2f * greenPhase,    // 绿色分量动态变化  
-                0.3f + 0.25f * bluePhase      // 蓝色分量动态变化
+                redPhase,      // 红：基准0.9 + 小波动
+                greenPhase,    // 绿：基准0.7 + 小波动
+                bluePhase      // 蓝：基准0.1 + 快速闪烁
             ) * combinedGlow;
             
             // 动态缩放脉冲效果：多个频率叠加
@@ -604,22 +604,25 @@ MazeApp::MazeApp(const Options& options)
                 startZ + static_cast<float>(r) * cellSize);
             };
 
-        // 创建墙壁 - 放大 snow_box 使其完全贴紧
+        // 创建墙壁 - 确保墙底和雪地底部平齐
         for (int r = 0; r < rows; ++r) {
             for (int c = 0; c < cols; ++c) {
                 if (maze[r][c] == '#') {
-                    const glm::vec3 pos = cellToWorld(c, r, wallY);
+                    const glm::vec3 pos = cellToWorld(c, r, groundY); // 直接使用groundY作为墙底基准
                     SceneModel sm;
                     sm.model = snowModel;
-                    sm.transform.position = pos;
-                    sm.transform.scale = glm::vec3(2.8f);  // 进一步放大，确保完全闭合
+
+                    // 关键：调整scale的Y轴，让模型底部贴合groundY（假设snowModel的中心在0,0,0）
+                    // 原scale Y轴是2.8f，改为让模型高度从groundY开始向上延伸
+                    sm.transform.position = pos + glm::vec3(0.0f, 1.4f, 0.0f); // 模型中心上移1.4f（2.8f/2）
+                    sm.transform.scale = glm::vec3(2.8f, 2.8f, 2.8f);         // 保持等比缩放
                     sm.fallbackColor = glm::vec3(0.8f);
                     sm.isWall = true;
 
-                    // 碰撞盒应该基于 cellSize
+                    // 碰撞盒同步调整（确保碰撞检测和视觉一致）
                     float halfCell = cellSize * 0.45f;
-                    sm.aabb.min = glm::vec3(pos.x - halfCell, wallY - 1.0f, pos.z - halfCell);
-                    sm.aabb.max = glm::vec3(pos.x + halfCell, wallY + 2.0f, pos.z + halfCell);
+                    sm.aabb.min = glm::vec3(pos.x - halfCell, groundY, pos.z - halfCell); // 碰撞盒底部=groundY
+                    sm.aabb.max = glm::vec3(pos.x + halfCell, groundY + 2.8f, pos.z + halfCell); // 碰撞盒高度=2.8f
 
                     _sceneModels.push_back(std::move(sm));
                 }
@@ -696,7 +699,7 @@ MazeApp::MazeApp(const Options& options)
                 glm::vec3 worldPos = cellToWorld(pos.second, pos.first, groundY + 0.5f);  // 距离地面0.5单位
                 star.transform.position = worldPos;
                 star.transform.scale = glm::vec3(0.5f);  // 放大星星
-                star.fallbackColor = glm::vec3(1.0f, 0.95f, 0.3f); // 亮黄色
+                star.fallbackColor = glm::vec3(1.0f, 0.8f, 0.2f); // 初始金橙色
                 star.isStar = true;
                 star.starTime = static_cast<float>(pos.first * 3 + pos.second * 2) * 0.3f;
                 std::cout << "Star at grid(" << pos.first << "," << pos.second
@@ -712,22 +715,19 @@ MazeApp::MazeApp(const Options& options)
 
         // 添加逼真的白雪地面 - 无限大的地面覆盖整个下方空间
         {
-            // 创建一个巨大的地面，覆盖整个相机可见范围
-            // 基于相机远裁剪面(200单位)和可能的移动范围
-            float groundWidth = 1000.0f;  // 1000单位的宽度，确保完全覆盖
-            float groundLength = 1000.0f; // 1000单位的长度
-            
+            float groundWidth = 1000.0f;
+            float groundLength = 1000.0f;
+
+            float snowThickness = 0.05f;                     // 雪地厚度
+            float snowCenterY = groundY + snowThickness * 0.5f; // ✅ 关键：保证雪地底部=groundY
+
             // 主地面 - 中心区域
             SceneModel ground;
-            ground.model = snowModel;  // 使用雪墙模型，这样会有雪纹理
-            ground.transform.position = glm::vec3(0.0f, groundY - 0.1f, 0.0f);  // 略低于地面高度
-            ground.transform.scale = glm::vec3(groundWidth / 2.0f, 0.05f, groundLength / 2.0f);  // 压扁成平面
-            
-            // 更逼真的雪颜色和材质特性
-            // 真实的雪颜色：冷白色带轻微蓝色调，但不是纯蓝
-            ground.fallbackColor = glm::vec3(0.96f, 0.96f, 1.01f);  // 逼真的雪白颜色
-            
-            // 轻微随机化颜色，创造更自然的效果
+            ground.model = snowModel;
+            ground.transform.position = glm::vec3(0.0f, snowCenterY, 0.0f);   // ✅ 用 snowCenterY
+            ground.transform.scale = glm::vec3(groundWidth / 2.0f, snowThickness, groundLength / 2.0f);
+
+            ground.fallbackColor = glm::vec3(0.96f, 0.96f, 1.01f);
             float colorVariation = 0.02f;
             ground.fallbackColor += glm::vec3(
                 (rand() % 100) / 1000.0f * colorVariation,
@@ -735,125 +735,123 @@ MazeApp::MazeApp(const Options& options)
                 (rand() % 100) / 1000.0f * colorVariation * 0.5f
             );
             
-            // 注意：我们需要通过修改全局材质参数来影响地面的渲染效果
-            // 雪应该有轻微的高光反射
-            
-            std::cout << "=== Realistic Snow Ground Added ===" << std::endl;
-            std::cout << "Main ground size: " << groundWidth << " x " << groundLength << " units" << std::endl;
-            std::cout << "Coverage: X[" << -groundWidth/2.0f << ", " << groundWidth/2.0f << "], " 
-                      << "Z[" << -groundLength/2.0f << ", " << groundLength/2.0f << "]" << std::endl;
-            std::cout << "Snow color: (" << ground.fallbackColor.r << ", " 
-                      << ground.fallbackColor.g << ", " << ground.fallbackColor.b << ")" << std::endl;
-            
             _sceneModels.push_back(std::move(ground));
-            
-            // 添加8个扩展地面，覆盖所有方向，形成几乎无限的地面
+
+            // 扩展地面
             std::vector<std::pair<float, float>> groundExtensions = {
-                {groundWidth, 0.0f},           // 右
-                {-groundWidth, 0.0f},          // 左
-                {0.0f, groundLength},          // 前
-                {0.0f, -groundLength},         // 后
-                {groundWidth, groundLength},   // 右前
-                {-groundWidth, groundLength},  // 左前
-                {groundWidth, -groundLength},  // 右后
-                {-groundWidth, -groundLength}  // 左后
+                {groundWidth, 0.0f}, {-groundWidth, 0.0f},
+                {0.0f, groundLength}, {0.0f, -groundLength},
+                {groundWidth, groundLength}, {-groundWidth, groundLength},
+                {groundWidth, -groundLength}, {-groundWidth, -groundLength}
             };
-            
-            std::cout << "=== Adding Realistic Snow Ground Extensions ===" << std::endl;
+
             for (const auto& ext : groundExtensions) {
                 SceneModel groundExt;
                 groundExt.model = snowModel;
-                groundExt.transform.position = glm::vec3(ext.first, groundY - 0.1f, ext.second);
-                groundExt.transform.scale = glm::vec3(groundWidth / 2.0f, 0.05f, groundLength / 2.0f);
-                
-                // 逼真的雪颜色，每块地面有轻微变化
+                groundExt.transform.position = glm::vec3(ext.first, snowCenterY, ext.second);  // ✅ 同样用 snowCenterY
+                groundExt.transform.scale = glm::vec3(groundWidth / 2.0f, snowThickness, groundLength / 2.0f);
+
                 groundExt.fallbackColor = glm::vec3(0.96f, 0.96f, 1.01f);
-                float colorVariation = 0.02f;
+                float colorVariation2 = 0.02f;
                 groundExt.fallbackColor += glm::vec3(
-                    (rand() % 100) / 1000.0f * colorVariation,
-                    (rand() % 100) / 1000.0f * colorVariation,
-                    (rand() % 100) / 1000.0f * colorVariation * 0.5f
+                    (rand() % 100) / 1000.0f * colorVariation2,
+                    (rand() % 100) / 1000.0f * colorVariation2,
+                    (rand() % 100) / 1000.0f * colorVariation2 * 0.5f
                 );
-                
+
                 _sceneModels.push_back(std::move(groundExt));
             }
-            
-            std::cout << "Total ground pieces: " << groundExtensions.size() + 1 << std::endl;
-            std::cout << "Total coverage: " << groundWidth * 3.0f << " x " << groundLength * 3.0f << " units" << std::endl;
-            std::cout << "Realistic snow ground with proper color and material effects!" << std::endl;
         }
 
+        
         // ========== 添加冬季森林环境 ==========
         std::cout << "\n=== Adding Winter Forest Environment ===" << std::endl;
-        
+
         // 加载雪松树模型
         const auto pineTreeModel = std::make_shared<Model>(
             loadModelFromFile(getAssetFullPath("obj/pine_tree.obj"), true));
-        
-        // 在迷宫周围随机放置雪松树
-        const int treeCount = 25;  // 树的数量
-        const float forestRadius = 35.0f;  // 森林半径
-        const float minDistanceFromMaze = 15.0f;  // 离迷宫最近距离
-        
+
+        // 迷宫核心参数（用于边界判断）
+        //const float cellSize = 2.5f;
+        //const int rows = static_cast<int>(maze.size());
+        //const int cols = static_cast<int>(maze[0].size());
+        const float mazeHalfWidth = 0.5f * cellSize * static_cast<float>(cols - 1);
+        const float mazeHalfLength = 0.5f * cellSize * static_cast<float>(rows - 1);
+        const float mazeBoundaryExpand = 5.0f; // 迷宫边界外扩5单位，确保树木远离迷宫
+
+        // 雪地高度系统（统一基准）
+        //const float groundY = -2.0f;                  // 雪地底部高度
+        const float snowThickness = 0.05f;            // 雪地厚度
+        const float snowSurfaceY = groundY + snowThickness;  // 雪地上表面高度（核心对齐基准）
+
+        // 树木生成参数
+        const int treeCount = 25;                     // 目标树木数量
+        const float minDistanceFromMaze = mazeBoundaryExpand;  // 离迷宫边界最小距离
+        const float maxDistanceFromMaze = 40.0f;      // 离迷宫边界最大距离
+        const float treeBurialDepth = 0.5f;           // 树木埋入雪地深度（设为0=刚好贴合）
+        const float treeBaseHeight = 2.0f;            // 松树模型原始高度（需根据实际obj调整，假设中心在0，底部-1.0，顶部+1.0）
+
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159265f);
-        std::uniform_real_distribution<float> radiusDist(minDistanceFromMaze, minDistanceFromMaze + forestRadius);
-        std::uniform_real_distribution<float> scaleDist(0.8f, 1.5f);  // 树的大小变化
+        std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * glm::pi<float>());
+        std::uniform_real_distribution<float> radiusDist(minDistanceFromMaze, maxDistanceFromMaze);
+        std::uniform_real_distribution<float> scaleDist(3.0f, 5.0f);  // 树木缩放比例
         std::uniform_real_distribution<float> colorDist(0.95f, 1.05f);  // 颜色轻微变化
-        
+        std::uniform_real_distribution<float> rotationDist(0.0f, 2.0f * glm::pi<float>()); // 随机旋转
+
         int treesPlaced = 0;
-        
-        for (int i = 0; i < treeCount * 3; ++i) {  // 尝试更多次，确保放置足够树木
-            // 随机极坐标
+
+        // 循环直到放置足够数量的树木
+        while (treesPlaced < treeCount) {
+            // 1. 随机生成极坐标（保证在迷宫外围）
             float angle = angleDist(gen);
             float radius = radiusDist(gen);
-            
-            // 转换为笛卡尔坐标
-            glm::vec3 treePos(
-                radius * cos(angle),
-                groundY - 0.1f,  // 与地面平齐
-                radius * sin(angle)
-            );
-            
-            // 检查是否太靠近迷宫中心（保留通道）
-            if (glm::length(glm::vec2(treePos.x, treePos.z)) < minDistanceFromMaze) {
-                continue;
+
+            // 转换为笛卡尔坐标（X/Z平面）
+            float treeX = radius * cos(angle);
+            float treeZ = radius * sin(angle);
+
+            // 2. 严格判断：是否在迷宫区域内（包含外扩边界）
+            bool isInMazeArea = false;
+            if (abs(treeX) <= mazeHalfWidth + mazeBoundaryExpand &&
+                abs(treeZ) <= mazeHalfLength + mazeBoundaryExpand) {
+                isInMazeArea = true;
             }
-            
-            // 创建雪松树
+            if (isInMazeArea) {
+                continue; // 跳过迷宫区域内的位置
+            }
+
+            // 3. 计算树木Y轴位置（核心对齐逻辑）
+            float treeScale = scaleDist(gen);
+            float treeHalfHeight = (treeBaseHeight / 2.0f) * treeScale; // 缩放后的模型半高
+            // 模型底部Y = 位置Y - 半高 = snowSurfaceY - treeBurialDepth
+            float treePosY = snowSurfaceY + treeHalfHeight - treeBurialDepth;
+
+            // 4. 构建最终树木位置
+            glm::vec3 treePos(treeX, treePosY, treeZ);
+
+            // 5. 创建雪松树实例
             SceneModel pineTree;
             pineTree.model = pineTreeModel;
             pineTree.transform.position = treePos;
-            
-            // 随机旋转和缩放
-            float treeScale = scaleDist(gen);
             pineTree.transform.scale = glm::vec3(treeScale);
-            pineTree.transform.rotation = glm::angleAxis(angleDist(gen), glm::vec3(0.0f, 1.0f, 0.0f));
-            
-            // 雪的覆盖程度变化
-            float snowColorVariation = colorDist(gen);
+            pineTree.transform.rotation = glm::angleAxis(rotationDist(gen), glm::vec3(0.0f, 1.0f, 0.0f)); // 随机Y轴旋转
+
+            // 6. 雪色变化（保留自然感）
+            float snowColorVar = colorDist(gen);
             pineTree.fallbackColor = glm::vec3(
-                0.96f * snowColorVariation,
-                0.96f * snowColorVariation,
-                1.01f * snowColorVariation
+                0.96f * snowColorVar,
+                0.96f * snowColorVar,
+                1.01f * snowColorVar
             );
-            
-            pineTree.isForestTree = true;
-            
+
+            // 7. 添加到场景并计数
             _sceneModels.push_back(std::move(pineTree));
             treesPlaced++;
-            
-            if (treesPlaced >= treeCount) {
-                break;
-            }
+            std::cout << "Placed tree " << treesPlaced << " at (" << treeX << ", " << treePosY << ", " << treeZ << ")" << std::endl;
         }
-        
-        std::cout << "Winter forest created with " << treesPlaced << " snow-covered pine trees!" << std::endl;
-        std::cout << "Forest radius: " << forestRadius << " units" << std::endl;
-        std::cout << "Trees placed around the maze at distance: " << minDistanceFromMaze << " to " 
-                  << (minDistanceFromMaze + forestRadius) << " units" << std::endl;
 
+        std::cout << "Successfully placed " << treesPlaced << " pine trees outside maze!" << std::endl;
     }
     catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
