@@ -208,6 +208,54 @@ void MazeApp::createSSAOBuffer() {
     _ssaoShader->setUniformVec2("noiseScale", glm::vec2((float)_windowWidth / 4.0f, (float)_windowHeight / 4.0f));
 }
 
+void MazeApp::createMeshVAOs() {
+    for (SceneModel& sm : _sceneModels) {
+        if (!sm.model) continue;
+        Model& model = *sm.model;
+        const auto& verts = model.getVertices();
+        const auto& inds = model.getIndices();
+
+        // 若已存在任何一个 mesh.vao 则认为已初始化（避免重复）
+        bool already = false;
+        for (const Mesh& m : model.getMeshes()) if (m.vao != 0) { already = true; break; }
+        if (already) continue;
+
+        GLuint modelVao = 0, modelVbo = 0, modelEbo = 0;
+        glGenVertexArrays(1, &modelVao);
+        glGenBuffers(1, &modelVbo);
+        glGenBuffers(1, &modelEbo);
+
+        glBindVertexArray(modelVao);
+
+        glBindBuffer(GL_ARRAY_BUFFER, modelVbo);
+        glBufferData(GL_ARRAY_BUFFER,
+            static_cast<GLsizeiptr>(verts.size() * sizeof(Vertex)),
+            verts.data(), GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, modelEbo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+            static_cast<GLsizeiptr>(inds.size() * sizeof(uint32_t)),
+            inds.data(), GL_STATIC_DRAW);
+
+        const GLsizei stride = sizeof(Vertex);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(Vertex, position));
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(Vertex, normal));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)offsetof(Vertex, texCoord));
+
+        glBindVertexArray(0);
+
+        // 分配给每个 mesh（前提：mesh.indexOffset 已在 loadModelFromFile 中设置为对应 model 索引区间）
+        for (Mesh& mesh : model.getMeshes()) {
+            mesh.vao = modelVao;
+            mesh.vbo = modelVbo;
+            mesh.ebo = modelEbo;
+        }
+    }
+}
+
 void MazeApp::updateCamera(float deltaTime) {
     double xpos, ypos;
     glfwGetCursorPos(_window, &xpos, &ypos);
@@ -283,6 +331,91 @@ void MazeApp::updateStars(float deltaTime) {
     }
 }
 
+void MazeApp::updateSunlight(float deltaTime) {
+    if (!_sunAnimationEnabled) return;
+
+    // 更新时间 (0-24小时循环)
+    _sunTime += deltaTime * _sunAnimationSpeed;
+    if (_sunTime >= 24.0f) _sunTime -= 24.0f;
+
+    // 将时间转换为角度 (0-360度)
+    float angle = (_sunTime / 24.0f) * 2.0f * glm::pi<float>();
+
+    // 计算太阳方向 (从东升到西落的弧线)
+    float elevation = glm::sin(angle);  // -1 到 1
+    float azimuth = glm::cos(angle);
+
+    // 设置光源位置 (模拟太阳轨迹)
+    float radius = 50.0f;
+    _lightPos = glm::vec3(
+        azimuth * radius,
+        glm::max(elevation * radius, -5.0f),  // 防止太阳到地平线以下太多
+        glm::sin(angle * 0.3f) * radius * 0.3f  // 添加一些轨迹变化
+    );
+
+    // 根据时间计算太阳颜色和强度
+    float normalizedTime = _sunTime / 24.0f;
+
+    // 定义一天中的关键时刻颜色
+    glm::vec3 nightColor(0.1f, 0.15f, 0.3f);      // 夜晚 - 深蓝
+    glm::vec3 dawnColor(1.0f, 0.5f, 0.3f);        // 黎明 - 橙红
+    glm::vec3 dayColor(1.0f, 0.95f, 0.9f);        // 白天 - 亮白
+    glm::vec3 duskColor(1.0f, 0.4f, 0.2f);        // 黄昏 - 深橙
+
+    // 根据时间段混合颜色
+    glm::vec3 sunColor;
+    float intensity;
+
+    if (_sunTime < 6.0f) {
+        // 深夜 (0-6点)
+        float t = _sunTime / 6.0f;
+        sunColor = nightColor;
+        intensity = 0.1f + 0.1f * t;
+    }
+    else if (_sunTime < 8.0f) {
+        // 黎明 (6-8点)
+        float t = (_sunTime - 6.0f) / 2.0f;
+        sunColor = glm::mix(nightColor, dawnColor, t);
+        intensity = 0.2f + 0.5f * t;
+    }
+    else if (_sunTime < 10.0f) {
+        // 早晨 (8-10点)
+        float t = (_sunTime - 8.0f) / 2.0f;
+        sunColor = glm::mix(dawnColor, dayColor, t);
+        intensity = 0.7f + 0.3f * t;
+    }
+    else if (_sunTime < 16.0f) {
+        // 白天 (10-16点)
+        sunColor = dayColor;
+        intensity = 1.0f;
+    }
+    else if (_sunTime < 18.0f) {
+        // 傍晚 (16-18点)
+        float t = (_sunTime - 16.0f) / 2.0f;
+        sunColor = glm::mix(dayColor, duskColor, t);
+        intensity = 1.0f - 0.3f * t;
+    }
+    else if (_sunTime < 20.0f) {
+        // 黄昏 (18-20点)
+        float t = (_sunTime - 18.0f) / 2.0f;
+        sunColor = glm::mix(duskColor, nightColor, t);
+        intensity = 0.7f - 0.5f * t;
+    }
+    else {
+        // 夜晚 (20-24点)
+        float t = (_sunTime - 20.0f) / 4.0f;
+        sunColor = nightColor;
+        intensity = 0.2f - 0.1f * t;
+    }
+
+    // 更新光源颜色和强度
+    _lightColor = sunColor;
+    _lightIntensity = intensity;
+
+    // 根据时间调整环境光
+    ambientStrength = 0.05f + 0.15f * intensity;
+}
+
 MazeApp::MazeApp(const Options& options)
     : Application(options), _camera(glm::radians(60.0f), static_cast<float>(options.windowWidth) / options.windowHeight, 0.1f, 100.0f) {
     glEnable(GL_DEPTH_TEST);
@@ -342,6 +475,7 @@ MazeApp::MazeApp(const Options& options)
     initResources();
     createGBuffer();
     createSSAOBuffer();
+    createMeshVAOs();
 
     try {
         const auto monsterModel = std::make_shared<Model>(
@@ -516,16 +650,20 @@ void MazeApp::renderFrame() {
 
     updateCamera(deltaTime);
     updateStars(deltaTime);  // 更新星星动画
+    updateSunlight(deltaTime);
 
     showFpsInWindowTitle();
     std::ostringstream title;
-    title << "Maze | FPS: " << static_cast<int>(1.0f / deltaTime)
+    title << "Zootopia gogogo | FPS: " << static_cast<int>(1.0f / deltaTime)
         << " | Light(" << std::fixed << std::setprecision(1)
         << _lightPos.x << "," << _lightPos.y << "," << _lightPos.z << ")"
         << " | Intensity:" << _lightIntensity
         << " | Exposure:" << exposure
         << " | SSAO:" << ssaoRadius
-        << " | Ambient:" << ambientStrength;
+        << " | Ambient:" << ambientStrength
+        << _lightPos.x << "," << _lightPos.y << "," << _lightPos.z << ")"
+        << " | Sun Time: " << std::setprecision(1) << _sunTime << "h"
+        << " | " << (_sunAnimationEnabled ? "ANIMATED" : "STATIC");
     glfwSetWindowTitle(_window, title.str().c_str());
 
     glClearColor(_clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a);
@@ -561,10 +699,10 @@ void MazeApp::renderFrame() {
 
         for (const Mesh& mesh : sm.model->getMeshes()) {
             bool hasTexture = (mesh.diffuseTexture != nullptr);
-
             glm::vec3 finalColor = mesh.baseColor * sm.fallbackColor;
+
             _gBufferShader->setUniformVec3("fallbackColor", finalColor);
-            _gBufferShader->setUniformBool("useAlbedoTexture", hasTexture ? true : false);
+            _gBufferShader->setUniformBool("useAlbedoTexture", hasTexture);
 
             glActiveTexture(GL_TEXTURE0);
             if (hasTexture) {
@@ -581,6 +719,7 @@ void MazeApp::renderFrame() {
             if (hasTexture) mesh.diffuseTexture->unbind();
         }
     }
+
     _gBufferShader->unuse();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -592,7 +731,7 @@ void MazeApp::renderFrame() {
     _ssaoShader->setUniformFloat("radius", ssaoRadius);
     _ssaoShader->setUniformFloat("bias", ssaoBias);
     _ssaoShader->setUniformVec2("noiseScale",
-        glm::vec2((float)_windowWidth / 4.0f, (float)_windowHeight / 4.0f));
+    glm::vec2((float)_windowWidth / 4.0f, (float)_windowHeight / 4.0f));
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, gPosition);
@@ -728,6 +867,14 @@ void MazeApp::handleInput() {
         ambientStrength = glm::min(1.0f, ambientStrength + 0.05f);
         _keyPressed[GLFW_KEY_8] = true;
     }
+
+    static bool key0WasPressed = false;
+    bool key0Pressed = glfwGetKey(_window, GLFW_KEY_0) == GLFW_PRESS;
+    if (key0Pressed && !key0WasPressed) {
+        _sunAnimationEnabled = !_sunAnimationEnabled;
+        std::cout << "Sun animation: " << (_sunAnimationEnabled ? "ON" : "OFF") << std::endl;
+    }
+    key0WasPressed = key0Pressed;
 
     for (int key : {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4,
         GLFW_KEY_5, GLFW_KEY_6, GLFW_KEY_7, GLFW_KEY_8}) {

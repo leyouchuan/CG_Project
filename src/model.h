@@ -13,7 +13,8 @@ struct Mesh {
     GLuint vao = 0;
     GLuint vbo = 0;
     GLuint ebo = 0;
-    size_t indexCount = 0;
+    size_t indexCount = 0;     // number of indices for this mesh
+    size_t indexOffset = 0;    // offset (in uint32_t) into model->_indices
     glm::vec3 baseColor = glm::vec3(1.0f);
     std::shared_ptr<ImageTexture2D> diffuseTexture;
 };
@@ -41,7 +42,11 @@ public:
 
     virtual void draw() const;
 
-    const std::vector<Mesh>& getMeshes() const;
+    //const std::vector<Mesh>& getMeshes() const;
+    const std::vector<Mesh>& getMeshes() const { return _meshes; }
+    std::vector<Mesh>& getMeshes() { return _meshes; }
+    const std::vector<Vertex>& getVertices() const { return _vertices; }
+    const std::vector<uint32_t>& getIndices() const { return _indices; }
 
 public:
     Transform transform;

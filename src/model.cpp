@@ -283,9 +283,9 @@ void Model::cleanup() {
     }
 }
 
-const std::vector<Mesh>& Model::getMeshes() const {
+/*const std::vector<Mesh>& Model::getMeshes() const {
     return _meshes;
-}
+}*/
 
 Model loadModelFromFile(const std::string& path, bool loadMtl) {
     const ParsedObj parsed = parseObjFile(path, loadMtl);

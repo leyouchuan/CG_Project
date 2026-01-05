@@ -59,8 +59,11 @@ private:
 
     void createGBuffer();
     void createSSAOBuffer();
+    void createMeshVAOs();
     void updateCamera(float deltaTime);
     void updateStars(float deltaTime);  // 新增：更新星星动画
+
+    void updateSunlight(float deltaTime);
 
     float _lastFrameTime = 0.0f;
 
@@ -113,4 +116,8 @@ private:
     const float _paramAdjustSpeed = 0.5f;
 
     std::map<int, bool> _keyPressed;
+
+    float _sunTime = 0.0f;          // 太阳时间 (0-24小时循环)
+    bool _sunAnimationEnabled = false;  // 是否启用太阳动画
+    float _sunAnimationSpeed = 1.0f;    // 动画速度倍率
 };
