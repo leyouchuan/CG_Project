@@ -13,6 +13,9 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <fstream>
+
+
 
 void printCwd() {
     char buf[1024];
@@ -65,6 +68,39 @@ void MazeApp::initResources() {
         _hdrShader->attachFragmentShaderFromFile(getAssetFullPath(hdrFs));
         _hdrShader->link();
         std::cerr << "Loaded shader: " << quadVs << " + " << hdrFs << std::endl;
+
+
+        // 冬季森林天空盒 - 使用现有的天空盒，适合冬季环境
+        // 注意：天空盒纹理顺序通常是：right, left, top, bottom, front, back
+        std::vector<std::string> skyboxTextures = {
+            getAssetFullPath("texture/skybox/Right_Tex.jpg"),    // +X (right)
+            getAssetFullPath("texture/skybox/Left_Tex.jpg"),     // -X (left)
+            getAssetFullPath("texture/skybox/Up_Tex.jpg"),       // +Y (top) - 冬季灰白色天空
+            getAssetFullPath("texture/skybox/Down_Tex.jpg"),     // -Y (bottom) - 雪地
+            getAssetFullPath("texture/skybox/Front_Tex.jpg"),    // +Z (front)
+            getAssetFullPath("texture/skybox/Back_Tex.jpg")      // -Z (back)
+        };
+
+        // 检查纹理文件是否存在，如果不存在则使用备用路径
+        bool allFilesExist = true;
+        for (const auto& path : skyboxTextures) {
+            std::ifstream file(path);
+            if (!file.good()) {
+                std::cerr << "Skybox texture not found: " << path << std::endl;
+                allFilesExist = false;
+                break;
+            }
+        }
+
+        if (allFilesExist) {
+            _skybox = std::make_unique<SkyBox>(skyboxTextures);
+            std::cerr << "Skybox loaded successfully!" << std::endl;
+        }
+        else {
+            // 使用简单天空盒或跳过
+            std::cerr << "Using fallback skybox colors" << std::endl;
+            // 可以创建一个纯色天空盒或使用程序生成的
+        }
     }
     catch (const std::exception& e) {
         std::cerr << "initResources failed: " << e.what() << std::endl;
@@ -140,7 +176,7 @@ void MazeApp::createSSAOBuffer() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, hdrColorBuffer, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+    //glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cerr << "HDR FBO incomplete\n";
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -272,19 +308,63 @@ void MazeApp::updateStars(float deltaTime) {
         if (sm.isStar) {
             sm.starTime += deltaTime;
 
-            // 上下浮动：使用正弦波，范围更小，更贴近地面
-            float floatOffset = 0.2f * sin(sm.starTime * 2.0f);  // 减小浮动幅度
-            sm.transform.position.y = -1.5f + floatOffset;  // 基础高度降低，更贴近地面
+            // 复杂的三维浮动：多个正弦波叠加
+            float floatOffsetX = 0.05f * sin(sm.starTime * 1.5f + sm.transform.position.x);
+            float floatOffsetZ = 0.05f * cos(sm.starTime * 1.8f + sm.transform.position.z);
+            float floatOffsetY = 0.2f * sin(sm.starTime * 3.0f);  // 主上下浮动
+            
+            sm.transform.position.x += floatOffsetX * deltaTime * 0.5f;
+            sm.transform.position.z += floatOffsetZ * deltaTime * 0.5f;
+            sm.transform.position.y = -1.5f + floatOffsetY;  // 基础高度降低，更贴近地面
 
-            // 自旋：绕Y轴旋转
-            float rotationAngle = sm.starTime * 1.5f;
-            sm.transform.rotation = glm::angleAxis(rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+            // 复杂的旋转：绕多个轴旋转，形成有趣的动态效果
+            float rotationYAngle = sm.starTime * 2.5f;  // Y轴旋转
+            float rotationXAngle = 0.2f * sin(sm.starTime * 1.5f);  // X轴摆动
+            float rotationZAngle = 0.1f * cos(sm.starTime * 2.0f);  // Z轴摆动
+            
+            glm::quat rotationY = glm::angleAxis(rotationYAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::quat rotationX = glm::angleAxis(rotationXAngle, glm::vec3(1.0f, 0.0f, 0.0f));
+            glm::quat rotationZ = glm::angleAxis(rotationZAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+            
+            sm.transform.rotation = rotationY * rotationX * rotationZ;
+            
+            // 增强的bulingbuling发光特效：多重频率叠加
+            float glowIntensity1 = 0.8f + 0.4f * sin(sm.starTime * 5.0f);  // 快速闪烁
+            float glowIntensity2 = 0.9f + 0.3f * sin(sm.starTime * 8.0f + 1.0f);  // 更快速闪烁
+            float glowIntensity3 = 0.7f + 0.5f * sin(sm.starTime * 2.0f + 2.0f);  // 慢速闪烁
+            
+            float combinedGlow = (glowIntensity1 * 0.4f + glowIntensity2 * 0.3f + glowIntensity3 * 0.3f);
+            
+            // 丰富的星光颜色变化：彩虹般的渐变效果
+            float redPhase = sin(sm.starTime * 2.0f + sm.transform.position.x * 0.1f);
+            float greenPhase = sin(sm.starTime * 2.3f + sm.transform.position.z * 0.1f + 1.0f);
+            float bluePhase = sin(sm.starTime * 1.7f + sm.transform.position.x * 0.05f + sm.transform.position.z * 0.05f + 2.0f);
+            
+            sm.fallbackColor = glm::vec3(
+                1.0f + 0.15f * redPhase,      // 红色分量动态变化
+                0.95f + 0.2f * greenPhase,    // 绿色分量动态变化  
+                0.3f + 0.25f * bluePhase      // 蓝色分量动态变化
+            ) * combinedGlow;
+            
+            // 动态缩放脉冲效果：多个频率叠加
+            float pulseScale1 = 0.5f + 0.08f * sin(sm.starTime * 3.5f);
+            float pulseScale2 = 0.03f * sin(sm.starTime * 7.0f + 0.5f);
+            float pulseScale3 = 0.02f * cos(sm.starTime * 4.0f + 1.5f);
+            
+            sm.transform.scale = glm::vec3(pulseScale1 + pulseScale2 + pulseScale3);
+            
+            // 添加轻微的颜色溢出效果：让星星的颜色影响周围环境
+            sm.fallbackColor += glm::vec3(
+                0.05f * sin(sm.starTime * 4.0f),
+                0.04f * cos(sm.starTime * 5.0f),
+                0.03f * sin(sm.starTime * 3.0f)
+            );
         }
     }
 }
 
 MazeApp::MazeApp(const Options& options)
-    : Application(options), _camera(glm::radians(60.0f), static_cast<float>(options.windowWidth) / options.windowHeight, 0.1f, 100.0f) {
+    : Application(options), _camera(glm::radians(60.0f), static_cast<float>(options.windowWidth) / options.windowHeight, 0.1f, 200.0f) {
     glEnable(GL_DEPTH_TEST);
     glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -496,6 +576,150 @@ MazeApp::MazeApp(const Options& options)
         }
         std::cout << "Total stars placed: " << starPositions.size() << std::endl;
 
+        // 添加逼真的白雪地面 - 无限大的地面覆盖整个下方空间
+        {
+            // 创建一个巨大的地面，覆盖整个相机可见范围
+            // 基于相机远裁剪面(200单位)和可能的移动范围
+            float groundWidth = 1000.0f;  // 1000单位的宽度，确保完全覆盖
+            float groundLength = 1000.0f; // 1000单位的长度
+            
+            // 主地面 - 中心区域
+            SceneModel ground;
+            ground.model = snowModel;  // 使用雪墙模型，这样会有雪纹理
+            ground.transform.position = glm::vec3(0.0f, groundY - 0.1f, 0.0f);  // 略低于地面高度
+            ground.transform.scale = glm::vec3(groundWidth / 2.0f, 0.05f, groundLength / 2.0f);  // 压扁成平面
+            
+            // 更逼真的雪颜色和材质特性
+            // 真实的雪颜色：冷白色带轻微蓝色调，但不是纯蓝
+            ground.fallbackColor = glm::vec3(0.96f, 0.96f, 1.01f);  // 逼真的雪白颜色
+            
+            // 轻微随机化颜色，创造更自然的效果
+            float colorVariation = 0.02f;
+            ground.fallbackColor += glm::vec3(
+                (rand() % 100) / 1000.0f * colorVariation,
+                (rand() % 100) / 1000.0f * colorVariation,
+                (rand() % 100) / 1000.0f * colorVariation * 0.5f
+            );
+            
+            // 注意：我们需要通过修改全局材质参数来影响地面的渲染效果
+            // 雪应该有轻微的高光反射
+            
+            std::cout << "=== Realistic Snow Ground Added ===" << std::endl;
+            std::cout << "Main ground size: " << groundWidth << " x " << groundLength << " units" << std::endl;
+            std::cout << "Coverage: X[" << -groundWidth/2.0f << ", " << groundWidth/2.0f << "], " 
+                      << "Z[" << -groundLength/2.0f << ", " << groundLength/2.0f << "]" << std::endl;
+            std::cout << "Snow color: (" << ground.fallbackColor.r << ", " 
+                      << ground.fallbackColor.g << ", " << ground.fallbackColor.b << ")" << std::endl;
+            
+            _sceneModels.push_back(std::move(ground));
+            
+            // 添加8个扩展地面，覆盖所有方向，形成几乎无限的地面
+            std::vector<std::pair<float, float>> groundExtensions = {
+                {groundWidth, 0.0f},           // 右
+                {-groundWidth, 0.0f},          // 左
+                {0.0f, groundLength},          // 前
+                {0.0f, -groundLength},         // 后
+                {groundWidth, groundLength},   // 右前
+                {-groundWidth, groundLength},  // 左前
+                {groundWidth, -groundLength},  // 右后
+                {-groundWidth, -groundLength}  // 左后
+            };
+            
+            std::cout << "=== Adding Realistic Snow Ground Extensions ===" << std::endl;
+            for (const auto& ext : groundExtensions) {
+                SceneModel groundExt;
+                groundExt.model = snowModel;
+                groundExt.transform.position = glm::vec3(ext.first, groundY - 0.1f, ext.second);
+                groundExt.transform.scale = glm::vec3(groundWidth / 2.0f, 0.05f, groundLength / 2.0f);
+                
+                // 逼真的雪颜色，每块地面有轻微变化
+                groundExt.fallbackColor = glm::vec3(0.96f, 0.96f, 1.01f);
+                float colorVariation = 0.02f;
+                groundExt.fallbackColor += glm::vec3(
+                    (rand() % 100) / 1000.0f * colorVariation,
+                    (rand() % 100) / 1000.0f * colorVariation,
+                    (rand() % 100) / 1000.0f * colorVariation * 0.5f
+                );
+                
+                _sceneModels.push_back(std::move(groundExt));
+            }
+            
+            std::cout << "Total ground pieces: " << groundExtensions.size() + 1 << std::endl;
+            std::cout << "Total coverage: " << groundWidth * 3.0f << " x " << groundLength * 3.0f << " units" << std::endl;
+            std::cout << "Realistic snow ground with proper color and material effects!" << std::endl;
+        }
+
+        // ========== 添加冬季森林环境 ==========
+        std::cout << "\n=== Adding Winter Forest Environment ===" << std::endl;
+        
+        // 加载雪松树模型
+        const auto pineTreeModel = std::make_shared<Model>(
+            loadModelFromFile(getAssetFullPath("obj/pine_tree.obj"), true));
+        
+        // 在迷宫周围随机放置雪松树
+        const int treeCount = 25;  // 树的数量
+        const float forestRadius = 35.0f;  // 森林半径
+        const float minDistanceFromMaze = 15.0f;  // 离迷宫最近距离
+        
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159265f);
+        std::uniform_real_distribution<float> radiusDist(minDistanceFromMaze, minDistanceFromMaze + forestRadius);
+        std::uniform_real_distribution<float> scaleDist(0.8f, 1.5f);  // 树的大小变化
+        std::uniform_real_distribution<float> colorDist(0.95f, 1.05f);  // 颜色轻微变化
+        
+        int treesPlaced = 0;
+        
+        for (int i = 0; i < treeCount * 3; ++i) {  // 尝试更多次，确保放置足够树木
+            // 随机极坐标
+            float angle = angleDist(gen);
+            float radius = radiusDist(gen);
+            
+            // 转换为笛卡尔坐标
+            glm::vec3 treePos(
+                radius * cos(angle),
+                groundY - 0.1f,  // 与地面平齐
+                radius * sin(angle)
+            );
+            
+            // 检查是否太靠近迷宫中心（保留通道）
+            if (glm::length(glm::vec2(treePos.x, treePos.z)) < minDistanceFromMaze) {
+                continue;
+            }
+            
+            // 创建雪松树
+            SceneModel pineTree;
+            pineTree.model = pineTreeModel;
+            pineTree.transform.position = treePos;
+            
+            // 随机旋转和缩放
+            float treeScale = scaleDist(gen);
+            pineTree.transform.scale = glm::vec3(treeScale);
+            pineTree.transform.rotation = glm::angleAxis(angleDist(gen), glm::vec3(0.0f, 1.0f, 0.0f));
+            
+            // 雪的覆盖程度变化
+            float snowColorVariation = colorDist(gen);
+            pineTree.fallbackColor = glm::vec3(
+                0.96f * snowColorVariation,
+                0.96f * snowColorVariation,
+                1.01f * snowColorVariation
+            );
+            
+            pineTree.isForestTree = true;
+            
+            _sceneModels.push_back(std::move(pineTree));
+            treesPlaced++;
+            
+            if (treesPlaced >= treeCount) {
+                break;
+            }
+        }
+        
+        std::cout << "Winter forest created with " << treesPlaced << " snow-covered pine trees!" << std::endl;
+        std::cout << "Forest radius: " << forestRadius << " units" << std::endl;
+        std::cout << "Trees placed around the maze at distance: " << minDistanceFromMaze << " to " 
+                  << (minDistanceFromMaze + forestRadius) << " units" << std::endl;
+
     }
     catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
@@ -515,7 +739,7 @@ void MazeApp::renderFrame() {
     _lastFrameTime = currentFrame;
 
     updateCamera(deltaTime);
-    updateStars(deltaTime);  // 更新星星动画
+    updateStars(deltaTime);
 
     showFpsInWindowTitle();
     std::ostringstream title;
@@ -528,27 +752,18 @@ void MazeApp::renderFrame() {
         << " | Ambient:" << ambientStrength;
     glfwSetWindowTitle(_window, title.str().c_str());
 
-    glClearColor(_clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
     const glm::mat4 view = _camera.getViewMatrix();
     const glm::mat4 proj = _camera.getProjectionMatrix();
 
-    _shader->use();
-    _shader->setUniformMat4("uView", view);
-    _shader->setUniformMat4("uProj", proj);
-    _shader->setUniformInt("uDiffuse", 0);
-
-    // 1. Geometry pass
+    // ========== 1. Geometry pass ==========
     glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
     _gBufferShader->use();
-    glm::mat4 projection = _camera.getProjectionMatrix();
-
     _gBufferShader->setUniformMat4("view", view);
-    _gBufferShader->setUniformMat4("projection", projection);
+    _gBufferShader->setUniformMat4("projection", proj);
+    _gBufferShader->setUniformFloat("time", static_cast<float>(glfwGetTime()));  // 传递时间用于星星发光特效
 
     for (const SceneModel& sm : _sceneModels) {
         if (!sm.model) continue;
@@ -561,10 +776,10 @@ void MazeApp::renderFrame() {
 
         for (const Mesh& mesh : sm.model->getMeshes()) {
             bool hasTexture = (mesh.diffuseTexture != nullptr);
-
             glm::vec3 finalColor = mesh.baseColor * sm.fallbackColor;
+
             _gBufferShader->setUniformVec3("fallbackColor", finalColor);
-            _gBufferShader->setUniformBool("useAlbedoTexture", hasTexture ? true : false);
+            _gBufferShader->setUniformBool("useAlbedoTexture", hasTexture);
 
             glActiveTexture(GL_TEXTURE0);
             if (hasTexture) {
@@ -581,10 +796,9 @@ void MazeApp::renderFrame() {
             if (hasTexture) mesh.diffuseTexture->unbind();
         }
     }
-    _gBufferShader->unuse();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // 2. SSAO pass
+    // ========== 2. SSAO pass ==========
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
     glClear(GL_COLOR_BUFFER_BIT);
     _ssaoShader->use();
@@ -594,44 +808,43 @@ void MazeApp::renderFrame() {
     _ssaoShader->setUniformVec2("noiseScale",
         glm::vec2((float)_windowWidth / 4.0f, (float)_windowHeight / 4.0f));
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, gPosition);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, gPosition);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, gNormal);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, noiseTexture);
+
     _ssaoShader->setUniformInt("gPosition", 0);
-
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, gNormal);
     _ssaoShader->setUniformInt("gNormal", 1);
-
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, noiseTexture);
     _ssaoShader->setUniformInt("texNoise", 2);
 
     glBindVertexArray(quadVAO);
     glDisable(GL_DEPTH_TEST);
     glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // 3. SSAO blur
+    // ========== 3. SSAO blur ==========
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
     glClear(GL_COLOR_BUFFER_BIT);
     _ssaoBlurShader->use();
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
     _ssaoBlurShader->setUniformInt("ssaoInput", 0);
     glBindVertexArray(quadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // 4. Lighting pass 
+    // ========== 4. Lighting pass ==========
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT);
     _lightingShader->use();
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, gPosition); _lightingShader->setUniformInt("gPosition", 0);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, gNormal);   _lightingShader->setUniformInt("gNormal", 1);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, gAlbedo);   _lightingShader->setUniformInt("gAlbedo", 2);
-    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur); _lightingShader->setUniformInt("ssao", 3);
+
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, gPosition);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, gNormal);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, gAlbedo);
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
+
+    _lightingShader->setUniformInt("gPosition", 0);
+    _lightingShader->setUniformInt("gNormal", 1);
+    _lightingShader->setUniformInt("gAlbedo", 2);
+    _lightingShader->setUniformInt("ssao", 3);
 
     _lightingShader->setUniformVec3("viewPos", _camera.transform.position);
     _lightingShader->setUniformVec3("lightPos", _lightPos);
@@ -639,21 +852,56 @@ void MazeApp::renderFrame() {
     _lightingShader->setUniformFloat("ambientStrength", ambientStrength);
     _lightingShader->setUniformVec3("materialSpecular", _materialSpecular);
     _lightingShader->setUniformFloat("materialShininess", _materialShininess);
+    _lightingShader->setUniformFloat("time", static_cast<float>(glfwGetTime()));  // 传递时间用于星星动画
 
     glBindVertexArray(quadVAO);
+    glDisable(GL_DEPTH_TEST);
     glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // 5. HDR Tonemap + Gamma to default framebuffer
+    // ========== 5. 切换回默认帧缓冲 ==========
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(_clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // 5.1 先画 HDR tonemap（物体）
     _hdrShader->use();
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, hdrColorBuffer); _hdrShader->setUniformInt("hdrBuffer", 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, hdrColorBuffer);
+    _hdrShader->setUniformInt("hdrBuffer", 0);
     _hdrShader->setUniformFloat("exposure", exposure);
     _hdrShader->setUniformFloat("gamma", gammaVal);
+
     glBindVertexArray(quadVAO);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
     glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
+    glEnable(GL_BLEND); // 如果后面要画 ImGui
+
+    // 5.2 ★把几何体深度从 gBuffer 拷到默认帧缓冲（非常关键）
+    int fbW, fbH;
+    glfwGetFramebufferSize(_window, &fbW, &fbH);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer); // 这里用你的 gBuffer FBO
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, fbW, fbH, 0, 0, fbW, fbH,
+        GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // 5.3 最后画天空盒：只会出现在“没有几何体”的地方
+    if (_skybox) {
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_FALSE);
+
+        glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(view));
+        _skybox->draw(proj, viewNoTranslation);
+
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+    }
+
+
+
 }
 
 void MazeApp::handleInput() {
