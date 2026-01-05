@@ -5,6 +5,7 @@
 #include "base/glsl_program.h"
 #include "base/transform.h"
 #include "model.h"
+#include "base/skybox.h"
 #include <memory>
 #include <vector>
 #include <map>
@@ -41,8 +42,9 @@ private:
         glm::vec3 fallbackColor = glm::vec3(0.8f);
         AABB aabb;
         bool isWall = false;
-        bool isStar = false;  // 新增：标记是否为星星
-        float starTime = 0.0f;  // 新增：星星动画时间
+        bool isStar = false;  // 标记是否为星星
+        bool isForestTree = false;  // 新增：标记是否为森林树木
+        float starTime = 0.0f;  // 星星动画时间
     };
 
     PerspectiveCamera _camera;
@@ -102,13 +104,13 @@ private:
 
     float ssaoRadius = 0.5f;
     float ssaoBias = 0.025f;
-    float ambientStrength = 0.12f;
+    float ambientStrength = 0.15f;  // 增加环境光强度，模拟雪地的反射
     float exposure = 1.0f;
     float gammaVal = 2.2f;
-    glm::vec3 _lightPos = glm::vec3(0.0f, 4.0f, 0.0f);
-    glm::vec3 _lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
-    glm::vec3 _materialSpecular = glm::vec3(0.5f);
-    float _materialShininess = 32.0f;
+    glm::vec3 _lightPos = glm::vec3(5.0f, 8.0f, 5.0f);  // 冬季斜阳位置
+    glm::vec3 _lightColor = glm::vec3(0.95f, 0.98f, 1.05f);  // 冷白色调，略带蓝色
+    glm::vec3 _materialSpecular = glm::vec3(0.6f, 0.6f, 0.7f);  // 雪的镜面反射（偏蓝）
+    float _materialShininess = 40.0f;  // 雪的微光泽
 
     float _lightIntensity = 1.0f;
 
@@ -116,8 +118,13 @@ private:
     const float _paramAdjustSpeed = 0.5f;
 
     std::map<int, bool> _keyPressed;
+<<<<<<< HEAD
 
     float _sunTime = 0.0f;          // 太阳时间 (0-24小时循环)
     bool _sunAnimationEnabled = false;  // 是否启用太阳动画
     float _sunAnimationSpeed = 1.0f;    // 动画速度倍率
+=======
+    // 添加天空盒
+    std::unique_ptr<SkyBox> _skybox;
+>>>>>>> a77f31218d7a4a9fd95b9d707b9e8423a89d5068
 };
