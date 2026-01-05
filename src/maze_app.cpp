@@ -873,12 +873,8 @@ void MazeApp::renderFrame() {
     _lastFrameTime = currentFrame;
 
     updateCamera(deltaTime);
-<<<<<<< HEAD
     updateStars(deltaTime);  // 更新星星动画
     updateSunlight(deltaTime);
-=======
-    updateStars(deltaTime);
->>>>>>> a77f31218d7a4a9fd95b9d707b9e8423a89d5068
 
     showFpsInWindowTitle();
     std::ostringstream title;
@@ -938,11 +934,7 @@ void MazeApp::renderFrame() {
             if (hasTexture) mesh.diffuseTexture->unbind();
         }
     }
-<<<<<<< HEAD
-
     _gBufferShader->unuse();
-=======
->>>>>>> a77f31218d7a4a9fd95b9d707b9e8423a89d5068
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // ========== 2. SSAO pass ==========

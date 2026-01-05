@@ -118,13 +118,13 @@ private:
     const float _paramAdjustSpeed = 0.5f;
 
     std::map<int, bool> _keyPressed;
-<<<<<<< HEAD
+
 
     float _sunTime = 0.0f;          // 太阳时间 (0-24小时循环)
     bool _sunAnimationEnabled = false;  // 是否启用太阳动画
     float _sunAnimationSpeed = 1.0f;    // 动画速度倍率
-=======
+
     // 添加天空盒
     std::unique_ptr<SkyBox> _skybox;
->>>>>>> a77f31218d7a4a9fd95b9d707b9e8423a89d5068
+
 };
