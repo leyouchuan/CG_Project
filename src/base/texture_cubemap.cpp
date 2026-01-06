@@ -52,7 +52,7 @@ ImageTextureCubemap::ImageTextureCubemap(const std::vector<std::string>& filepat
     // -----------------------------------------------
     //½«image¼ÓÔØµ½»º´æ
     glBindTexture(GL_TEXTURE_CUBE_MAP, _handle);
-    stbi_set_flip_vertically_on_load(true);
+    //stbi_set_flip_vertically_on_load(true);
     for (size_t i = 0; i < 6; i++)
     {
         int width = 0, height = 0, channels = 0;
