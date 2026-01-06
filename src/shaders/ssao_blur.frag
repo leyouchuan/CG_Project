@@ -4,7 +4,7 @@ in vec2 TexCoords;
 uniform sampler2D ssaoInput;
 void main() {
     float result = 0.0;
-    // simple 3x3 blur
+    // 3x3 
     float kernel[9] = float[](
         1,2,1,
         2,4,2,

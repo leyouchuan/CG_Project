@@ -13,7 +13,7 @@ uniform mat4 projection;
 uniform float radius;
 uniform float bias;
 
-uniform vec2 noiseScale; // screenSize / noiseSize
+uniform vec2 noiseScale;
 
 void main() {
     vec3 fragPos = texture(gPosition, TexCoords).rgb;
@@ -31,12 +31,10 @@ void main() {
         vec3 sample = TBN * samples[i]; // in world space (since samples are hemisphere)
         sample = fragPos + sample * radius;
 
-        // project sample position (to sample depth from gPosition)
         vec4 offset = projection * vec4(sample, 1.0);
         offset.xyz /= offset.w;
         vec2 sampleUV = offset.xy * 0.5 + 0.5;
 
-        // read depth from gPosition buffer
         vec3 samplePos = texture(gPosition, sampleUV).rgb;
         float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - samplePos.z + 1e-5));
         if (samplePos.z >= sample.z + bias) {

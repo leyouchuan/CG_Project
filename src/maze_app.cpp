@@ -238,10 +238,6 @@ void MazeApp::createSSAOBuffer() {
     for (unsigned int i = 0; i < 64; ++i) {
         _ssaoShader->setUniformVec3("samples[" + std::to_string(i) + "]", ssaoKernel[i]);
     }
-    _ssaoShader->setUniformFloat("radius", ssaoRadius);
-    _ssaoShader->setUniformFloat("bias", ssaoBias);
-    _ssaoShader->setUniformMat4("projection", _camera.getProjectionMatrix());
-    _ssaoShader->setUniformVec2("noiseScale", glm::vec2((float)_windowWidth / 4.0f, (float)_windowHeight / 4.0f));
 }
 
 void MazeApp::createMeshVAOs() {
@@ -414,33 +410,32 @@ void MazeApp::updateStars(float deltaTime) {
 void MazeApp::updateSunlight(float deltaTime) {
     if (!_sunAnimationEnabled) return;
 
-    // 更新时间 (0-24小时循环)
+    //时间变化
     _sunTime += deltaTime * _sunAnimationSpeed;
     if (_sunTime >= 24.0f) _sunTime -= 24.0f;
 
-    // 将时间转换为角度 (0-360度)
     float angle = (_sunTime / 24.0f) * 2.0f * glm::pi<float>();
 
-    // 计算太阳方向 (从东升到西落的弧线)
+    // 计算太阳方向
     float elevation = glm::sin(angle);  // -1 到 1
     float azimuth = glm::cos(angle);
 
-    // 设置光源位置 (模拟太阳轨迹)
+    // 设置光源位置
     float radius = 50.0f;
     _lightPos = glm::vec3(
         azimuth * radius,
-        glm::max(elevation * radius, -5.0f),  // 防止太阳到地平线以下太多
-        glm::sin(angle * 0.3f) * radius * 0.3f  // 添加一些轨迹变化
+        glm::max(elevation * radius, -5.0f),
+        glm::sin(angle * 0.3f) * radius * 0.3f 
     );
 
     // 根据时间计算太阳颜色和强度
     float normalizedTime = _sunTime / 24.0f;
 
-    // 定义一天中的关键时刻颜色
-    glm::vec3 nightColor(0.1f, 0.15f, 0.3f);      // 夜晚 - 深蓝
-    glm::vec3 dawnColor(1.0f, 0.5f, 0.3f);        // 黎明 - 橙红
-    glm::vec3 dayColor(1.0f, 0.95f, 0.9f);        // 白天 - 亮白
-    glm::vec3 duskColor(1.0f, 0.4f, 0.2f);        // 黄昏 - 深橙
+    // 特定时刻颜色
+    glm::vec3 nightColor(0.1f, 0.15f, 0.3f); 
+    glm::vec3 dawnColor(1.0f, 0.5f, 0.3f);
+    glm::vec3 dayColor(1.0f, 0.95f, 0.9f);
+    glm::vec3 duskColor(1.0f, 0.4f, 0.2f);
 
     // 根据时间段混合颜色
     glm::vec3 sunColor;
@@ -476,23 +471,19 @@ void MazeApp::updateSunlight(float deltaTime) {
         intensity = 1.0f - 0.3f * t;
     }
     else if (_sunTime < 20.0f) {
-        // 黄昏 (18-20点)
         float t = (_sunTime - 18.0f) / 2.0f;
         sunColor = glm::mix(duskColor, nightColor, t);
         intensity = 0.7f - 0.5f * t;
     }
     else {
-        // 夜晚 (20-24点)
         float t = (_sunTime - 20.0f) / 4.0f;
         sunColor = nightColor;
         intensity = 0.2f - 0.1f * t;
     }
 
-    // 更新光源颜色和强度
     _lightColor = sunColor;
     _lightIntensity = intensity;
 
-    // 根据时间调整环境光
     ambientStrength = 0.05f + 0.15f * intensity;
 }
 
@@ -873,7 +864,7 @@ void MazeApp::renderFrame() {
     _lastFrameTime = currentFrame;
 
     updateCamera(deltaTime);
-    updateStars(deltaTime);  // 更新星星动画
+    updateStars(deltaTime); 
     updateSunlight(deltaTime);
 
     showFpsInWindowTitle();
@@ -1002,7 +993,7 @@ void MazeApp::renderFrame() {
     glClearColor(_clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // 5.1 先画 HDR tonemap（物体）
+    // =========HDR===================
     _hdrShader->use();
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, hdrColorBuffer);
