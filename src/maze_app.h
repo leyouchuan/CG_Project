@@ -63,7 +63,7 @@ private:
     void createSSAOBuffer();
     void createMeshVAOs();
     void updateCamera(float deltaTime);
-    void updateStars(float deltaTime);  // 新增：更新星星动画
+    void updateStars(float deltaTime);
 
     void updateSunlight(float deltaTime);
 

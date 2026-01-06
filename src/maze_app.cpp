@@ -297,7 +297,7 @@ void MazeApp::updateCamera(float deltaTime) {
     deltaX *= _mouseSensitivity;
     deltaY *= _mouseSensitivity;
 
-    _yaw += -deltaX;
+    _yaw += deltaX;
     _pitch += deltaY;
 
     if (_pitch > 89.0f) _pitch = 89.0f;
@@ -599,7 +599,7 @@ MazeApp::MazeApp(const Options& options)
         for (int r = 0; r < rows; ++r) {
             for (int c = 0; c < cols; ++c) {
                 if (maze[r][c] == '#') {
-                    const glm::vec3 pos = cellToWorld(c, r, groundY); // 直接使用groundY作为墙底基准
+                    const glm::vec3 pos = cellToWorld(c, r, groundY-0.2); // 直接使用groundY作为墙底基准
                     SceneModel sm;
                     sm.model = snowModel;
 
@@ -628,7 +628,7 @@ MazeApp::MazeApp(const Options& options)
         {
             SceneModel judy;
             judy.model = judyModel;
-            judy.transform.position = cellToWorld(2, 1, groundY);  // 直接放在地面上
+            judy.transform.position = cellToWorld(2, 1, groundY+0.5);  // 直接放在地面上
             judy.transform.scale = glm::vec3(1.0f);
             judy.transform.lookAt(cellToWorld(4, 1, groundY));
             judy.fallbackColor = glm::vec3(0.7f, 0.7f, 0.9f);
@@ -890,7 +890,7 @@ void MazeApp::renderFrame() {
     _gBufferShader->use();
     _gBufferShader->setUniformMat4("view", view);
     _gBufferShader->setUniformMat4("projection", proj);
-    _gBufferShader->setUniformFloat("time", static_cast<float>(glfwGetTime()));  // 传递时间用于星星发光特效
+    _gBufferShader->setUniformFloat("time", static_cast<float>(glfwGetTime()));
 
     for (const SceneModel& sm : _sceneModels) {
         if (!sm.model) continue;
@@ -1031,6 +1031,8 @@ void MazeApp::renderFrame() {
 
 
 }
+
+
 
 void MazeApp::handleInput() {
     for (int i = 0; i <= GLFW_KEY_LAST; ++i) {
