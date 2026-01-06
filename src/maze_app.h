@@ -12,6 +12,8 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
+#include <string>
+
 
 class MazeApp : public Application {
 public:
@@ -59,11 +61,20 @@ private:
     virtual void handleInput();
     virtual void renderFrame();
 
+    // ===== Screenshot =====
+// F12: capture and save to ./screenshots as .bmp (no extra third-party libs).
+    void saveScreenshotToFile();
+    static bool writeBMP(const std::string& filepath,
+        int width,
+        int height,
+        const std::vector<unsigned char>& rgbBottomUp);
+
+
     void createGBuffer();
     void createSSAOBuffer();
     void createMeshVAOs();
     void updateCamera(float deltaTime);
-    void updateStars(float deltaTime);  // 新增：更新星星动画
+    void updateStars(float deltaTime);
 
     void updateSunlight(float deltaTime);
 
@@ -118,6 +129,10 @@ private:
     const float _paramAdjustSpeed = 0.5f;
 
     std::map<int, bool> _keyPressed;
+
+    // Screenshot state
+    bool _screenshotRequested = false;
+    uint64_t _screenshotCounter = 0;
 
 
     float _sunTime = 0.0f;          // 太阳时间 (0-24小时循环)

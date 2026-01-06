@@ -14,6 +14,11 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #include <fstream>
+#include <filesystem>
+#include <chrono>
+#include <ctime>
+#include <cstring>
+
 
 
 void printCwd() {
@@ -297,7 +302,7 @@ void MazeApp::updateCamera(float deltaTime) {
     deltaX *= _mouseSensitivity;
     deltaY *= _mouseSensitivity;
 
-    _yaw += -deltaX;
+    _yaw += deltaX;
     _pitch += deltaY;
 
     if (_pitch > 89.0f) _pitch = 89.0f;
@@ -599,7 +604,7 @@ MazeApp::MazeApp(const Options& options)
         for (int r = 0; r < rows; ++r) {
             for (int c = 0; c < cols; ++c) {
                 if (maze[r][c] == '#') {
-                    const glm::vec3 pos = cellToWorld(c, r, groundY); // 直接使用groundY作为墙底基准
+                    const glm::vec3 pos = cellToWorld(c, r, groundY-0.2); // 直接使用groundY作为墙底基准
                     SceneModel sm;
                     sm.model = snowModel;
 
@@ -628,7 +633,7 @@ MazeApp::MazeApp(const Options& options)
         {
             SceneModel judy;
             judy.model = judyModel;
-            judy.transform.position = cellToWorld(2, 1, groundY);  // 直接放在地面上
+            judy.transform.position = cellToWorld(2, 1, groundY+0.5);  // 直接放在地面上
             judy.transform.scale = glm::vec3(1.0f);
             judy.transform.lookAt(cellToWorld(4, 1, groundY));
             judy.fallbackColor = glm::vec3(0.7f, 0.7f, 0.9f);
@@ -890,7 +895,7 @@ void MazeApp::renderFrame() {
     _gBufferShader->use();
     _gBufferShader->setUniformMat4("view", view);
     _gBufferShader->setUniformMat4("projection", proj);
-    _gBufferShader->setUniformFloat("time", static_cast<float>(glfwGetTime()));  // 传递时间用于星星发光特效
+    _gBufferShader->setUniformFloat("time", static_cast<float>(glfwGetTime()));
 
     for (const SceneModel& sm : _sceneModels) {
         if (!sm.model) continue;
@@ -1027,10 +1032,18 @@ void MazeApp::renderFrame() {
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
     }
+    // ===== Screenshot (F12) =====
+// Note: this captures the default framebuffer's BACK buffer before swap.
+    if (_screenshotRequested) {
+        saveScreenshotToFile();
+        _screenshotRequested = false;
+    }
 
 
 
 }
+
+
 
 void MazeApp::handleInput() {
     for (int i = 0; i <= GLFW_KEY_LAST; ++i) {
@@ -1113,10 +1126,139 @@ void MazeApp::handleInput() {
     }
     key0WasPressed = key0Pressed;
 
+    // P: screenshot (edge-triggered)
+    bool shotPressed = (glfwGetKey(_window, GLFW_KEY_P) == GLFW_PRESS);
+    static bool wasPressed = false;
+    if (shotPressed && !wasPressed) {
+        _screenshotRequested = true;
+    }
+    wasPressed = shotPressed;
+
+
+
     for (int key : {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4,
         GLFW_KEY_5, GLFW_KEY_6, GLFW_KEY_7, GLFW_KEY_8}) {
         if (_input.keyboard.keyStates[key] == GLFW_RELEASE) {
             _keyPressed[key] = false;
         }
+    }
+}
+
+// ===== Screenshot implementation =====
+
+bool MazeApp::writeBMP(const std::string& filepath,
+    int width,
+    int height,
+    const std::vector<unsigned char>& rgbBottomUp) {
+    if (width <= 0 || height <= 0) return false;
+    if ((int)rgbBottomUp.size() < width * height * 3) return false;
+
+    std::ofstream out(filepath, std::ios::binary);
+    if (!out.is_open()) return false;
+
+    const int rowStride = width * 3;
+    const int padding = (4 - (rowStride % 4)) % 4;
+    const int pixelDataSize = (rowStride + padding) * height;
+    const int fileSize = 14 + 40 + pixelDataSize;
+
+    auto writeU16 = [&](uint16_t v) {
+        unsigned char b[2] = { (unsigned char)(v & 0xFF), (unsigned char)((v >> 8) & 0xFF) };
+        out.write(reinterpret_cast<char*>(b), 2);
+        };
+    auto writeU32 = [&](uint32_t v) {
+        unsigned char b[4] = {
+            (unsigned char)(v & 0xFF),
+            (unsigned char)((v >> 8) & 0xFF),
+            (unsigned char)((v >> 16) & 0xFF),
+            (unsigned char)((v >> 24) & 0xFF)
+        };
+        out.write(reinterpret_cast<char*>(b), 4);
+        };
+    auto writeS32 = [&](int32_t v) {
+        writeU32(static_cast<uint32_t>(v));
+        };
+
+    // BITMAPFILEHEADER (14 bytes)
+    out.put('B');
+    out.put('M');
+    writeU32((uint32_t)fileSize);
+    writeU16(0);
+    writeU16(0);
+    writeU32(14 + 40); // offset
+
+    // BITMAPINFOHEADER (40 bytes)
+    writeU32(40);
+    writeS32(width);
+    writeS32(height); // positive => bottom-up (matches glReadPixels)
+    writeU16(1);      // planes
+    writeU16(24);     // bpp
+    writeU32(0);      // BI_RGB
+    writeU32((uint32_t)pixelDataSize);
+    writeS32(2835);   // 72 DPI
+    writeS32(2835);
+    writeU32(0);
+    writeU32(0);
+
+    // Pixel data: BGR + row padding
+    std::vector<unsigned char> row;
+    row.resize((size_t)rowStride);
+    const unsigned char pad[3] = { 0, 0, 0 };
+
+    for (int y = 0; y < height; ++y) {
+        const unsigned char* src = rgbBottomUp.data() + (size_t)y * (size_t)rowStride;
+        for (int x = 0; x < width; ++x) {
+            const unsigned char r = src[x * 3 + 0];
+            const unsigned char g = src[x * 3 + 1];
+            const unsigned char b = src[x * 3 + 2];
+            row[x * 3 + 0] = b;
+            row[x * 3 + 1] = g;
+            row[x * 3 + 2] = r;
+        }
+        out.write(reinterpret_cast<const char*>(row.data()), rowStride);
+        if (padding) out.write(reinterpret_cast<const char*>(pad), padding);
+    }
+
+    return out.good();
+}
+
+void MazeApp::saveScreenshotToFile() {
+    int fbW = 0, fbH = 0;
+    glfwGetFramebufferSize(_window, &fbW, &fbH);
+    if (fbW <= 0 || fbH <= 0) return;
+
+    std::vector<unsigned char> pixels;
+    pixels.resize((size_t)fbW * (size_t)fbH * 3);
+
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glReadBuffer(GL_BACK);
+    glReadPixels(0, 0, fbW, fbH, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+
+    // screenshots/<timestamp>_<counter>.bmp
+    std::filesystem::path outDir = std::filesystem::current_path() / "screenshots";
+    std::error_code ec;
+    std::filesystem::create_directories(outDir, ec);
+
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+
+    std::ostringstream name;
+    name << "screenshot_" << std::put_time(&tm, "%Y%m%d_%H%M%S")
+        << "_" << std::setw(4) << std::setfill('0') << (_screenshotCounter++)
+        << ".bmp";
+
+    std::filesystem::path outPath = outDir / name.str();
+
+    if (writeBMP(outPath.string(), fbW, fbH, pixels)) {
+        std::cout << "Saved screenshot: " << outPath.string() << std::endl;
+    }
+    else {
+        std::cerr << "Failed to save screenshot: " << outPath.string() << std::endl;
     }
 }
