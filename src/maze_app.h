@@ -14,6 +14,60 @@
 #include <iomanip>
 #include <string>
 
+// 脚印系统类
+class FootprintSystem {
+public:
+    struct FootprintParams {
+        glm::vec3 color = glm::vec3(0.7f, 0.7f, 0.8f);  // 脚印颜色
+        float depth = 0.3f;       // 30%透明度 
+        float radius = 0.03f;      // 纹理空间的3%
+        float roughness = 0.9f;   // 粗糙度
+        float decayTime = 30.0f;  // 30秒消失
+        float fadeSpeed = 1.0f;   // 标准强度
+
+        // 编辑界面
+        void renderEditorUI();
+    };
+
+    void init(int width, int height);
+    void update(float deltaTime);
+    void renderUI(bool& showEditor);
+    void addFootprint(const glm::vec3& position);
+    void renderFootprintsToTexture();
+    GLuint getTexture() const { return _footprintTexture; }
+
+
+    // 新增：解决报错的核心函数
+    size_t getFootprintCount() const { return _footprints.size(); }
+    void clearFootprints() { _footprints.clear(); }
+
+    void updateFootprints(const glm::vec3& cameraPosition);
+    
+    FootprintParams params;
+
+private:
+    GLuint _footprintFBO = 0;
+    GLuint _footprintTexture = 0;
+    GLuint _pingpongFBO[2] = { 0, 0 };
+    GLuint _pingpongTexture[2] = { 0, 0 };
+
+    std::vector<std::tuple<glm::vec3, float>> _footprints; // 位置 + 创建时间
+    std::unique_ptr<GLSLProgram> _footprintShader;
+    std::unique_ptr<GLSLProgram> _blurShader;
+
+    glm::vec3 _lastFootprintPos;
+    float _footprintStepDistance = 0.8f;
+    bool _hasLastFootprint = false;
+    float _groundY = -2.0f;  // 实际地面高度！
+    float _groundTolerance = 0.5f;
+
+    //void updateFootprints(const glm::vec3& cameraPosition);  // 函数声明
+
+    void applyBlur();
+
+    void createWinterPresets();
+};
+
 
 class MazeApp : public Application {
 public:
@@ -142,4 +196,22 @@ private:
     // 添加天空盒
     std::unique_ptr<SkyBox> _skybox;
 
+    // 添加这些成员变量
+    FootprintSystem _footprintSystem;
+    GLuint _footprintVAO = 0;
+    GLuint _footprintVBO = 0;
+    //glm::vec3 _lastFootprintPos = glm::vec3(0.0f);
+    //float _footprintTimer = 0.0f;
+    //const float _footprintInterval = 0.5f; // 每0.5秒一个脚印
+    bool _showMaterialEditor = false;
+    bool _showFootprintEditor = false;
+
+    bool _mouseControlEnabled = true;
+
+    // 添加初始化方法
+    void initFootprintSystem();
+    void initMaterialEditor();
+    void updateFootprints(float deltaTime);
+
 };
+

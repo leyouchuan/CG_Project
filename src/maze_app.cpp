@@ -108,6 +108,7 @@ void MazeApp::initResources() {
     }
     catch (const std::exception& e) {
         std::cerr << "initResources failed: " << e.what() << std::endl;
+        throw;
     }
 }
 
@@ -239,8 +240,30 @@ void MazeApp::createSSAOBuffer() {
     glBindVertexArray(0);
 
     _ssaoShader->use();
-    for (unsigned int i = 0; i < 64; ++i) {
-        _ssaoShader->setUniformVec3("samples[" + std::to_string(i) + "]", ssaoKernel[i]);
+
+    // 获取当前激活的OpenGL程序ID
+    GLint currentProgram = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+
+    GLint samplesLoc = glGetUniformLocation(currentProgram, "samples");
+
+    if (samplesLoc != -1) {
+        // 转换为float数组
+        std::vector<float> samplesData;
+        samplesData.reserve(64 * 3);
+
+        for (int i = 0; i < 64; ++i) {
+            samplesData.push_back(ssaoKernel[i].x);
+            samplesData.push_back(ssaoKernel[i].y);
+            samplesData.push_back(ssaoKernel[i].z);
+        }
+
+        // 一次性设置整个数组
+        glUniform3fv(samplesLoc, 64, samplesData.data());
+        std::cerr << "SSAO samples set successfully" << std::endl;
+    }
+    else {
+        std::cerr << "ERROR: 'samples' uniform not found" << std::endl;
     }
 }
 
@@ -293,35 +316,41 @@ void MazeApp::createMeshVAOs() {
 }
 
 void MazeApp::updateCamera(float deltaTime) {
-    double xpos, ypos;
-    glfwGetCursorPos(_window, &xpos, &ypos);
+    // ★★★ 添加这个if ★★★
+    if (_mouseControlEnabled) {
+        double xpos, ypos;
+        glfwGetCursorPos(_window, &xpos, &ypos);
 
-    float deltaX = static_cast<float>(xpos - _windowWidth / 2);
-    float deltaY = static_cast<float>(_windowHeight / 2 - ypos);
+        float deltaX = static_cast<float>(xpos - _windowWidth / 2);
+        float deltaY = static_cast<float>(_windowHeight / 2 - ypos);
 
-    deltaX *= _mouseSensitivity;
-    deltaY *= _mouseSensitivity;
+        deltaX *= _mouseSensitivity;
+        deltaY *= _mouseSensitivity;
 
-    _yaw += deltaX;
-    _pitch += deltaY;
+        _yaw += deltaX;
+        _pitch += deltaY;
 
-    if (_pitch > 89.0f) _pitch = 89.0f;
-    if (_pitch < -89.0f) _pitch = -89.0f;
+        if (_pitch > 89.0f) _pitch = 89.0f;
+        if (_pitch < -89.0f) _pitch = -89.0f;
 
-    glm::vec3 front;
-    front.x = cos(glm::radians(_yaw)) * cos(glm::radians(_pitch));
-    front.y = sin(glm::radians(_pitch));
-    front.z = sin(glm::radians(_yaw)) * cos(glm::radians(_pitch));
-    front = glm::normalize(front);
+        glm::vec3 front;
+        front.x = cos(glm::radians(_yaw)) * cos(glm::radians(_pitch));
+        front.y = sin(glm::radians(_pitch));
+        front.z = sin(glm::radians(_yaw)) * cos(glm::radians(_pitch));
+        front = glm::normalize(front);
 
-    _camera.transform.rotation = glm::quatLookAt(front, Transform::getDefaultUp());
+        _camera.transform.rotation = glm::quatLookAt(front, Transform::getDefaultUp());
 
-    glfwSetCursorPos(_window, _windowWidth / 2, _windowHeight / 2);
+        glfwSetCursorPos(_window, _windowWidth / 2, _windowHeight / 2);  // ← 这行也要在if里
+    }
+    // ★★★ if结束，鼠标代码到此为止 ★★★
 
     glm::vec3 dir(0.0f);
     glm::vec3 horizontalFront = _camera.transform.getFront();
     horizontalFront.y = 0.0f;
     horizontalFront = glm::normalize(horizontalFront);
+
+
 
     if (_input.keyboard.keyStates[GLFW_KEY_W] == GLFW_PRESS) dir += horizontalFront;
     if (_input.keyboard.keyStates[GLFW_KEY_S] == GLFW_PRESS) dir -= horizontalFront;
@@ -348,8 +377,19 @@ void MazeApp::updateCamera(float deltaTime) {
     // 如果没有碰撞，则应用移动
     if (!collided) {
         _camera.move(dir * _moveSpeed * deltaTime);
+
+        // ★★★ 新的脚印逻辑：在移动后调用 ★★★
+        _footprintSystem.updateFootprints(_camera.transform.position);
     }
+
+    // 更新脚印系统（衰减等）
+    updateFootprints(deltaTime);
 }
+
+void MazeApp::updateFootprints(float deltaTime) {
+    _footprintSystem.update(deltaTime);
+}
+
 
 void MazeApp::updateStars(float deltaTime) {
     for (auto& sm : _sceneModels) {
@@ -360,7 +400,7 @@ void MazeApp::updateStars(float deltaTime) {
             float floatOffsetX = 0.05f * sin(sm.starTime * 1.5f + sm.transform.position.x);
             float floatOffsetZ = 0.05f * cos(sm.starTime * 1.8f + sm.transform.position.z);
             float floatOffsetY = 0.2f * sin(sm.starTime * 3.0f);  // 主上下浮动
-            
+
             sm.transform.position.x += floatOffsetX * deltaTime * 0.5f;
             sm.transform.position.z += floatOffsetZ * deltaTime * 0.5f;
             sm.transform.position.y = -1.5f + floatOffsetY;  // 基础高度降低，更贴近地面
@@ -369,20 +409,20 @@ void MazeApp::updateStars(float deltaTime) {
             float rotationYAngle = sm.starTime * 2.5f;  // Y轴旋转
             float rotationXAngle = 0.2f * sin(sm.starTime * 1.5f);  // X轴摆动
             float rotationZAngle = 0.1f * cos(sm.starTime * 2.0f);  // Z轴摆动
-            
+
             glm::quat rotationY = glm::angleAxis(rotationYAngle, glm::vec3(0.0f, 1.0f, 0.0f));
             glm::quat rotationX = glm::angleAxis(rotationXAngle, glm::vec3(1.0f, 0.0f, 0.0f));
             glm::quat rotationZ = glm::angleAxis(rotationZAngle, glm::vec3(0.0f, 0.0f, 1.0f));
-            
+
             sm.transform.rotation = rotationY * rotationX * rotationZ;
-            
+
             // 增强的bulingbuling发光特效：多重频率叠加
             float glowIntensity1 = 0.8f + 0.4f * sin(sm.starTime * 5.0f);  // 快速闪烁
             float glowIntensity2 = 0.9f + 0.3f * sin(sm.starTime * 8.0f + 1.0f);  // 更快速闪烁
             float glowIntensity3 = 0.7f + 0.5f * sin(sm.starTime * 2.0f + 2.0f);  // 慢速闪烁
-            
+
             float combinedGlow = (glowIntensity1 * 0.4f + glowIntensity2 * 0.3f + glowIntensity3 * 0.3f);
-            
+
             // 丰富的星光颜色变化：彩虹般的渐变效果
             float goldPhase = sin(sm.starTime * 2.5f + sm.transform.position.x * 0.1f);
             float redPhase = 0.9f + 0.1f * goldPhase;
@@ -394,14 +434,14 @@ void MazeApp::updateStars(float deltaTime) {
                 greenPhase,    // 绿：基准0.7 + 小波动
                 bluePhase      // 蓝：基准0.1 + 快速闪烁
             ) * combinedGlow;
-            
+
             // 动态缩放脉冲效果：多个频率叠加
             float pulseScale1 = 0.5f + 0.08f * sin(sm.starTime * 3.5f);
             float pulseScale2 = 0.03f * sin(sm.starTime * 7.0f + 0.5f);
             float pulseScale3 = 0.02f * cos(sm.starTime * 4.0f + 1.5f);
-            
+
             sm.transform.scale = glm::vec3(pulseScale1 + pulseScale2 + pulseScale3);
-            
+
             // 添加轻微的颜色溢出效果：让星星的颜色影响周围环境
             sm.fallbackColor += glm::vec3(
                 0.05f * sin(sm.starTime * 4.0f),
@@ -430,14 +470,14 @@ void MazeApp::updateSunlight(float deltaTime) {
     _lightPos = glm::vec3(
         azimuth * radius,
         glm::max(elevation * radius, -5.0f),
-        glm::sin(angle * 0.3f) * radius * 0.3f 
+        glm::sin(angle * 0.3f) * radius * 0.3f
     );
 
     // 根据时间计算太阳颜色和强度
     float normalizedTime = _sunTime / 24.0f;
 
     // 特定时刻颜色
-    glm::vec3 nightColor(0.1f, 0.15f, 0.3f); 
+    glm::vec3 nightColor(0.1f, 0.15f, 0.3f);
     glm::vec3 dawnColor(1.0f, 0.5f, 0.3f);
     glm::vec3 dayColor(1.0f, 0.95f, 0.9f);
     glm::vec3 duskColor(1.0f, 0.4f, 0.2f);
@@ -491,6 +531,37 @@ void MazeApp::updateSunlight(float deltaTime) {
 
     ambientStrength = 0.05f + 0.15f * intensity;
 }
+
+void MazeApp::initFootprintSystem() {
+    _footprintSystem.init(_windowWidth, _windowHeight);
+
+    // 创建脚印渲染的四边形
+    float quadVertices[] = {
+        -1.0f,  1.0f, 0.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f, 0.0f,
+         1.0f, -1.0f, 1.0f, 0.0f,
+
+        -1.0f,  1.0f, 0.0f, 1.0f,
+         1.0f, -1.0f, 1.0f, 0.0f,
+         1.0f,  1.0f, 1.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &_footprintVAO);
+    glGenBuffers(1, &_footprintVBO);
+
+    glBindVertexArray(_footprintVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, _footprintVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+    glBindVertexArray(0);
+}
+
+
 
 MazeApp::MazeApp(const Options& options)
     : Application(options), _camera(glm::radians(60.0f), static_cast<float>(options.windowWidth) / options.windowHeight, 0.1f, 200.0f) {
@@ -604,7 +675,7 @@ MazeApp::MazeApp(const Options& options)
         for (int r = 0; r < rows; ++r) {
             for (int c = 0; c < cols; ++c) {
                 if (maze[r][c] == '#') {
-                    const glm::vec3 pos = cellToWorld(c, r, groundY-0.2); // 直接使用groundY作为墙底基准
+                    const glm::vec3 pos = cellToWorld(c, r, groundY - 0.2); // 直接使用groundY作为墙底基准
                     SceneModel sm;
                     sm.model = snowModel;
 
@@ -633,7 +704,7 @@ MazeApp::MazeApp(const Options& options)
         {
             SceneModel judy;
             judy.model = judyModel;
-            judy.transform.position = cellToWorld(2, 1, groundY+0.5);  // 直接放在地面上
+            judy.transform.position = cellToWorld(2, 1, groundY + 0.5);  // 直接放在地面上
             judy.transform.scale = glm::vec3(1.0f);
             judy.transform.lookAt(cellToWorld(4, 1, groundY));
             judy.fallbackColor = glm::vec3(0.7f, 0.7f, 0.9f);
@@ -730,7 +801,7 @@ MazeApp::MazeApp(const Options& options)
                 (rand() % 100) / 1000.0f * colorVariation,
                 (rand() % 100) / 1000.0f * colorVariation * 0.5f
             );
-            
+
             _sceneModels.push_back(std::move(ground));
 
             // 扩展地面
@@ -759,7 +830,7 @@ MazeApp::MazeApp(const Options& options)
             }
         }
 
-        
+
         // ========== 添加冬季森林环境 ==========
         std::cout << "\n=== Adding Winter Forest Environment ===" << std::endl;
 
@@ -817,11 +888,10 @@ MazeApp::MazeApp(const Options& options)
                 continue; // 跳过迷宫区域内的位置
             }
 
-            // 3. 计算树木Y轴位置（核心对齐逻辑）
+            // 3. 计算树木Y轴位置 - 直接放在地面
             float treeScale = scaleDist(gen);
-            float treeHalfHeight = (treeBaseHeight / 2.0f) * treeScale; // 缩放后的模型半高
-            // 模型底部Y = 位置Y - 半高 = snowSurfaceY - treeBurialDepth
-            float treePosY = snowSurfaceY + treeHalfHeight - treeBurialDepth;
+            float treeHalfHeight = (treeBaseHeight / 2.0f) * treeScale;
+            float treePosY = groundY + treeHalfHeight - 2.5f;  // ← 修改这行
 
             // 4. 构建最终树木位置
             glm::vec3 treePos(treeX, treePosY, treeZ);
@@ -849,27 +919,111 @@ MazeApp::MazeApp(const Options& options)
 
         std::cout << "Successfully placed " << treesPlaced << " pine trees outside maze!" << std::endl;
     }
+
+
     catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         throw;
     }
+
+    // ======================== 新增：ImGui初始化 ========================
+    // 1. 检查ImGui版本，创建上下文
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    // 启用键盘导航（可选，方便UI操作）
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // 设置深色主题（可选，视觉更适配雪地场景）
+    ImGui::StyleColorsDark();
+    // 2. 绑定GLFW窗口（_window是你的GLFW窗口句柄，已在Application中创建）
+    ImGui_ImplGlfw_InitForOpenGL(_window, true);
+    // 3. 初始化OpenGL3后端，匹配GLSL版本（330）
+    ImGui_ImplOpenGL3_Init("#version 330");
+    // ==================================================================
+
+    // 在这里初始化脚印系统，确保所有资源都已加载
+    initFootprintSystem();
+    std::cout << "Footprint system initialized. FBO: " << _footprintSystem.getTexture() << std::endl;
 }
 
 MazeApp::~MazeApp() {
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
+    // ======================== 优化：ImGui清理（带判空保护） ========================
+    if (ImGui::GetCurrentContext()) {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+    }
+
+    // ======================== 新增：OpenGL资源清理（避免内存泄漏） ========================
+    // 清理GBuffer相关
+    glDeleteFramebuffers(1, &gBuffer);
+    glDeleteTextures(1, &gPosition);
+    glDeleteTextures(1, &gNormal);
+    glDeleteTextures(1, &gAlbedo);
+    glDeleteRenderbuffers(1, &rboDepth);
+
+    // 清理SSAO相关
+    glDeleteFramebuffers(1, &ssaoFBO);
+    glDeleteFramebuffers(1, &ssaoBlurFBO);
+    glDeleteTextures(1, &ssaoColorBuffer);
+    glDeleteTextures(1, &ssaoColorBufferBlur);
+    glDeleteTextures(1, &noiseTexture);
+
+    // 清理HDR相关
+    glDeleteFramebuffers(1, &hdrFBO);
+    glDeleteTextures(1, &hdrColorBuffer);
+
+    // 清理脚印相关VAO/VBO
+    glDeleteVertexArrays(1, &_footprintVAO);
+    glDeleteBuffers(1, &_footprintVBO);
+
+    // 清理后处理四边形VAO/VBO
+    glDeleteVertexArrays(1, &quadVAO);
+    glDeleteBuffers(1, &quadVBO);
+
+    // 清理自定义shader
+    if (_shader) {
+        _shader.reset(); // 释放GLSLProgram（内部应调用glDeleteProgram）
+    }
+
+    // 清理GBuffer/SSAO/Lighting/HDR shader（如果有独立声明）
+    if (_gBufferShader) _gBufferShader.reset();
+    if (_ssaoShader) _ssaoShader.reset();
+    if (_ssaoBlurShader) _ssaoBlurShader.reset();
+    if (_lightingShader) _lightingShader.reset();
+    if (_hdrShader) _hdrShader.reset();
+
+    // 清理天空盒（如果SkyBox类有资源需要释放）
+    if (_skybox) {
+        _skybox.reset();
+    }
 }
 
 void MazeApp::renderFrame() {
+
     float currentFrame = static_cast<float>(glfwGetTime());
     float deltaTime = currentFrame - _lastFrameTime;
     _lastFrameTime = currentFrame;
 
     updateCamera(deltaTime);
-    updateStars(deltaTime); 
+    updateStars(deltaTime);
     updateSunlight(deltaTime);
 
+    // ===== ImGui 核心帧循环（必须在绘制窗口前执行）=====
+    // 初始化ImGui帧（如果全局ImGui已初始化，这里是每帧必做）
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame(); // 关键：标记ImGui进入帧范围，解决g=nullptr问题
+
+    // 3. 绘制脚印编辑器窗口（F键切换_showFootprintEditor）
+    if (_showFootprintEditor) {
+        _footprintSystem.renderUI(_showFootprintEditor);
+
+    }
+
+    
+
+    // ========== 修复：窗口标题重复拼接问题 ==========
     showFpsInWindowTitle();
     std::ostringstream title;
     title << "Zootopia gogogo | FPS: " << static_cast<int>(1.0f / deltaTime)
@@ -879,7 +1033,6 @@ void MazeApp::renderFrame() {
         << " | Exposure:" << exposure
         << " | SSAO:" << ssaoRadius
         << " | Ambient:" << ambientStrength
-        << _lightPos.x << "," << _lightPos.y << "," << _lightPos.z << ")"
         << " | Sun Time: " << std::setprecision(1) << _sunTime << "h"
         << " | " << (_sunAnimationEnabled ? "ANIMATED" : "STATIC");
     glfwSetWindowTitle(_window, title.str().c_str());
@@ -931,7 +1084,10 @@ void MazeApp::renderFrame() {
     _gBufferShader->unuse();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ========== 2. SSAO pass ==========
+    // ========== 2. 脚印效果渲染到纹理 ==========
+    _footprintSystem.renderFootprintsToTexture();
+
+    // ========== 3. SSAO pass ==========
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
     glClear(GL_COLOR_BUFFER_BIT);
     _ssaoShader->use();
@@ -939,7 +1095,7 @@ void MazeApp::renderFrame() {
     _ssaoShader->setUniformFloat("radius", ssaoRadius);
     _ssaoShader->setUniformFloat("bias", ssaoBias);
     _ssaoShader->setUniformVec2("noiseScale",
-    glm::vec2((float)_windowWidth / 4.0f, (float)_windowHeight / 4.0f));
+        glm::vec2((float)_windowWidth / 4.0f, (float)_windowHeight / 4.0f));
 
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, gPosition);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, gNormal);
@@ -954,7 +1110,7 @@ void MazeApp::renderFrame() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ========== 3. SSAO blur ==========
+    // ========== 4. SSAO blur ==========
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
     glClear(GL_COLOR_BUFFER_BIT);
     _ssaoBlurShader->use();
@@ -964,34 +1120,51 @@ void MazeApp::renderFrame() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ========== 4. Lighting pass ==========
+    // ========== 5. Lighting pass ==========
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
     glClear(GL_COLOR_BUFFER_BIT);
     _lightingShader->use();
+
+
 
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, gPosition);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, gNormal);
     glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, gAlbedo);
     glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
 
+    // 添加脚印纹理
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, _footprintSystem.getTexture());
+
+    // 设置所有uniform - 添加缺失的脚印相关uniform
     _lightingShader->setUniformInt("gPosition", 0);
     _lightingShader->setUniformInt("gNormal", 1);
     _lightingShader->setUniformInt("gAlbedo", 2);
     _lightingShader->setUniformInt("ssao", 3);
+    _lightingShader->setUniformInt("footprintMap", 4); // 添加脚印纹理uniform
 
+
+    // 添加脚印参数
+    _lightingShader->setUniformVec3("footprintColor", _footprintSystem.params.color);
+    _lightingShader->setUniformFloat("footprintRadius", _footprintSystem.params.radius);
+    _lightingShader->setUniformFloat("footprintRoughness", _footprintSystem.params.roughness);
+
+    // ... 其他uniform设置 ...
     _lightingShader->setUniformVec3("viewPos", _camera.transform.position);
     _lightingShader->setUniformVec3("lightPos", _lightPos);
     _lightingShader->setUniformVec3("lightColor", _lightColor * _lightIntensity);
     _lightingShader->setUniformFloat("ambientStrength", ambientStrength);
     _lightingShader->setUniformVec3("materialSpecular", _materialSpecular);
-    _lightingShader->setUniformFloat("materialShininess", _materialShininess);
+    //_lightingShader->setUniformFloat("materialShininess", _materialShininess);
     _lightingShader->setUniformFloat("time", static_cast<float>(glfwGetTime()));  // 传递时间用于星星动画
+
+    
 
     glBindVertexArray(quadVAO);
     glDisable(GL_DEPTH_TEST);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // ========== 5. 切换回默认帧缓冲 ==========
+    // ========== 6. 切换回默认帧缓冲 ==========
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glClearColor(_clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1010,7 +1183,7 @@ void MazeApp::renderFrame() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glEnable(GL_BLEND); // 如果后面要画 ImGui
 
-    // 5.2 ★把几何体深度从 gBuffer 拷到默认帧缓冲（非常关键）
+    // 6.2 ★把几何体深度从 gBuffer 拷到默认帧缓冲（非常关键）
     int fbW, fbH;
     glfwGetFramebufferSize(_window, &fbW, &fbH);
 
@@ -1020,7 +1193,7 @@ void MazeApp::renderFrame() {
         GL_DEPTH_BUFFER_BIT, GL_NEAREST);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // 5.3 最后画天空盒：只会出现在“没有几何体”的地方
+    // 6.3 最后画天空盒：只会出现在“没有几何体”的地方
     if (_skybox) {
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
@@ -1032,6 +1205,22 @@ void MazeApp::renderFrame() {
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
     }
+
+    // ===== 关键修正：ImGui绘制前恢复GL默认状态 =====
+    glEnable(GL_BLEND); // ImGui需要混合模式显示半透明UI
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // ImGui默认混合方式
+    glDisable(GL_DEPTH_TEST); // ImGui不需要深度测试（避免被遮挡）
+    glDisable(GL_CULL_FACE); // 禁用面剔除（确保ImGui元素都显示）
+
+    // ===== ImGui 最终渲染 =====
+    ImGui::Render(); // 生成ImGui绘制数据
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); // 绘制到屏幕
+
+    // ===== 恢复GL状态（可选，避免影响下一帧）=====
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+
     // ===== Screenshot (F12) =====
 // Note: this captures the default framebuffer's BACK buffer before swap.
     if (_screenshotRequested) {
@@ -1039,14 +1228,16 @@ void MazeApp::renderFrame() {
         _screenshotRequested = false;
     }
 
-
+    // ===== 注意：交换缓冲区已经在 Application::run() 中调用 =====
+    // 这里不需要再次调用 glfwSwapBuffers(_window);
+    // 双重交换缓冲区会导致闪烁问题
 
 }
 
 
 
 void MazeApp::handleInput() {
-    for (int i = 0; i <= GLFW_KEY_LAST; ++i) {
+    for (int i = GLFW_KEY_SPACE; i <= GLFW_KEY_LAST; ++i) {
         _input.keyboard.keyStates[i] = glfwGetKey(_window, i);
     }
 
@@ -1054,6 +1245,29 @@ void MazeApp::handleInput() {
         glfwSetWindowShouldClose(_window, true);
         return;
     }
+
+    // ★★★ TAB键切换（绝对安全版本）★★★
+    static bool tabKeyWasPressed = false;
+    bool tabKeyPressed = glfwGetKey(_window, GLFW_KEY_TAB) == GLFW_PRESS;
+
+    if (tabKeyPressed && !tabKeyWasPressed) {
+        // 只要有ImGui窗口打开，就完全忽略TAB
+        if (!_showFootprintEditor) {
+            _mouseControlEnabled = !_mouseControlEnabled;
+
+            if (_mouseControlEnabled) {
+                glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                std::cout << "Mouse: ON (camera control)" << std::endl;
+            }
+            else {
+                glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                std::cout << "Mouse: OFF (cursor visible)" << std::endl;
+            }
+        }
+        // 有窗口时完全不输出任何信息，完全忽略TAB
+    }
+    tabKeyWasPressed = tabKeyPressed;
+
 
     if (_windowReized) {
         _camera.aspect =
@@ -1134,6 +1348,35 @@ void MazeApp::handleInput() {
     }
     wasPressed = shotPressed;
 
+    // F: 打开/关闭脚印编辑器
+    static bool fKeyWasPressed = false;
+    bool fKeyPressed = glfwGetKey(_window, GLFW_KEY_F) == GLFW_PRESS;
+    if (fKeyPressed && !fKeyWasPressed) {
+        // ★ 保护：如果ImGui有活动控件，拒绝操作
+        if (!ImGui::IsAnyItemActive() && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+            _showFootprintEditor = !_showFootprintEditor;
+
+            if (_showFootprintEditor) {
+                _mouseControlEnabled = false;
+                glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                std::cout << "UI opened - Cursor visible" << std::endl;
+            }
+            else {
+                _mouseControlEnabled = true;
+                glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                std::cout << "UI closed - Game mode" << std::endl;
+            }
+        }
+        else {
+            std::cout << "Cannot close - Release UI control first" << std::endl;
+        }
+    }
+    fKeyWasPressed = fKeyPressed;
+
+
+   
+
+
 
 
     for (int key : {GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4,
@@ -1142,6 +1385,8 @@ void MazeApp::handleInput() {
             _keyPressed[key] = false;
         }
     }
+
+
 }
 
 // ===== Screenshot implementation =====
@@ -1262,3 +1507,370 @@ void MazeApp::saveScreenshotToFile() {
         std::cerr << "Failed to save screenshot: " << outPath.string() << std::endl;
     }
 }
+
+// ==================== FootprintSystem 实现 ====================
+
+void FootprintSystem::FootprintParams::renderEditorUI() {
+    ImGui::ColorEdit3("Footprint Color", &color.x);
+    ImGui::SliderFloat("Radius", &radius, 0.01f, 1.0f, "%.3f");
+    ImGui::SliderFloat("Depth", &depth, 0.05f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Roughness", &roughness, 0.1f, 1.0f);
+    ImGui::SliderFloat("Decay Time", &decayTime, 5.0f, 120.0f, "%.1f s");
+    ImGui::SliderFloat("Intensity", &fadeSpeed, 0.1f, 2.0f, "%.2f");
+}
+
+void FootprintSystem::init(int width, int height) {
+    // 创建脚印渲染纹理
+    glGenFramebuffers(1, &_footprintFBO);
+    glGenTextures(1, &_footprintTexture);
+
+    glBindTexture(GL_TEXTURE_2D, _footprintTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, _footprintFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _footprintTexture, 0);
+
+    // 创建ping-pong FBO用于模糊
+    for (int i = 0; i < 2; i++) {
+        glGenFramebuffers(1, &_pingpongFBO[i]);
+        glGenTextures(1, &_pingpongTexture[i]);
+
+        glBindTexture(GL_TEXTURE_2D, _pingpongTexture[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, _pingpongFBO[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _pingpongTexture[i], 0);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // 创建脚印着色器
+    const char* footprintVs = R"(
+        #version 330 core
+        layout(location = 0) in vec2 aPos;
+        layout(location = 1) in vec2 aTexCoord;
+        out vec2 TexCoord;
+        void main() {
+            gl_Position = vec4(aPos, 0.0, 1.0);
+            TexCoord = aTexCoord;
+        }
+    )";
+
+    const char* footprintFs = R"(
+        #version 330 core
+        in vec2 TexCoord;
+        out vec4 FragColor;
+        
+        uniform vec3 footprintPositions[100];
+        uniform float footprintIntensities[100];
+        uniform int footprintCount;
+        uniform vec3 footprintColor;
+        uniform float footprintRadius;
+        uniform float footprintDepth;
+        uniform vec2 resolution;
+        
+        void main() {
+            vec2 uv = TexCoord;
+            vec3 color = vec3(0.0);
+            float totalWeight = 0.0;
+            
+            for (int i = 0; i < footprintCount; i++) {
+                // 转换为纹理空间坐标
+                vec2 footprintUV = vec2(
+                    (footprintPositions[i].x + 50.0) / 100.0,
+                    (footprintPositions[i].z + 50.0) / 100.0
+                );
+                
+                float dist = distance(uv, footprintUV);
+                if (dist < footprintRadius) {
+                    float weight = footprintIntensities[i] * (1.0 - dist / footprintRadius);
+                    color += footprintColor * weight;
+                    totalWeight += weight;
+                }
+            }
+            
+            if (totalWeight > 0.0) {
+                color /= totalWeight;
+                FragColor = vec4(color, min(totalWeight * footprintDepth, 1.0));
+            } else {
+                FragColor = vec4(0.0);
+            }
+        }
+    )";
+
+    _footprintShader = std::make_unique<GLSLProgram>();
+    _footprintShader->attachVertexShader(footprintVs);
+    _footprintShader->attachFragmentShader(footprintFs);
+    _footprintShader->link();
+
+    // 创建模糊着色器
+    const char* blurFs = R"(
+        #version 330 core
+        in vec2 TexCoord;
+        out vec4 FragColor;
+        
+        uniform sampler2D image;
+        uniform bool horizontal;
+        uniform float weight[5] = float[](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+        
+        void main() {
+            vec2 tex_offset = 1.0 / textureSize(image, 0);
+            vec3 result = texture(image, TexCoord).rgb * weight[0];
+            
+            if (horizontal) {
+                for (int i = 1; i < 5; ++i) {
+                    result += texture(image, TexCoord + vec2(tex_offset.x * i, 0.0)).rgb * weight[i];
+                    result += texture(image, TexCoord - vec2(tex_offset.x * i, 0.0)).rgb * weight[i];
+                }
+            } else {
+                for (int i = 1; i < 5; ++i) {
+                    result += texture(image, TexCoord + vec2(0.0, tex_offset.y * i)).rgb * weight[i];
+                    result += texture(image, TexCoord - vec2(0.0, tex_offset.y * i)).rgb * weight[i];
+                }
+            }
+            
+            FragColor = vec4(result, texture(image, TexCoord).a);
+        }
+    )";
+
+    _blurShader = std::make_unique<GLSLProgram>();
+    _blurShader->attachVertexShader(footprintVs);
+    _blurShader->attachFragmentShader(blurFs);
+    _blurShader->link();
+}
+
+void FootprintSystem::updateFootprints(const glm::vec3& cameraPosition) {
+    glm::vec3 currentPos = cameraPosition;
+
+    // 检查是否在地面附近（地面上方一定高度内）
+    bool isNearGround = (currentPos.y >= _groundY) &&
+        (currentPos.y <= _groundY + _groundTolerance);
+
+    if (isNearGround) {
+        if (!_hasLastFootprint) {
+            // 第一个脚印
+            glm::vec3 footprintPos = currentPos;
+            footprintPos.y = _groundY;  // 固定在地面高度
+
+            addFootprint(footprintPos);
+            _lastFootprintPos = footprintPos;
+            _hasLastFootprint = true;
+
+            std::cout << "First footprint at: ("
+                << footprintPos.x << ", "
+                << footprintPos.y << ", "
+                << footprintPos.z << ")" << std::endl;
+        }
+        else {
+            // ★ 关键：计算XZ平面的水平移动距离（忽略Y轴）
+            float horizontalDist = glm::length(glm::vec2(
+                currentPos.x - _lastFootprintPos.x,
+                currentPos.z - _lastFootprintPos.z
+            ));
+
+            // 移动了足够距离才添加新脚印
+            if (horizontalDist >= _footprintStepDistance) {
+                glm::vec3 footprintPos = currentPos;
+                footprintPos.y = _groundY;
+
+                addFootprint(footprintPos);
+                _lastFootprintPos = footprintPos;
+
+                std::cout << "Footprint added at: ("
+                    << footprintPos.x << ", "
+                    << footprintPos.y << ", "
+                    << footprintPos.z << ") dist="
+                    << horizontalDist << std::endl;
+            }
+        }
+    }
+    else {
+        // 离开地面区域，重置状态
+        _hasLastFootprint = false;
+    }
+}
+
+void FootprintSystem::update(float deltaTime) {
+    // 移除过期的脚印
+    float currentTime = static_cast<float>(glfwGetTime());
+    _footprints.erase(
+        std::remove_if(_footprints.begin(), _footprints.end(),
+            [currentTime, this](const auto& fp) {
+                return currentTime - std::get<1>(fp) > params.decayTime;
+            }),
+        _footprints.end()
+    );
+}
+
+void FootprintSystem::addFootprint(const glm::vec3& position) {
+    _footprints.push_back(std::make_tuple(position, static_cast<float>(glfwGetTime())));
+
+    // 限制最大脚印数量
+    if (_footprints.size() > 100) {
+        _footprints.erase(_footprints.begin());
+    }
+}
+
+void FootprintSystem::renderFootprintsToTexture() {
+    if (_footprints.empty()) return;
+
+    // 创建渲染用的VAO（如果还没有）
+    static GLuint renderVAO = 0;
+    static GLuint renderVBO = 0;
+    if (renderVAO == 0) {
+        float quadVertices[] = {
+            -1.0f,  1.0f, 0.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+
+            -1.0f,  1.0f, 0.0f, 1.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+             1.0f,  1.0f, 1.0f, 1.0f
+        };
+
+        glGenVertexArrays(1, &renderVAO);
+        glGenBuffers(1, &renderVBO);
+
+        glBindVertexArray(renderVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, renderVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glBindVertexArray(0);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, _footprintFBO);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    _footprintShader->use();
+
+    // 传递脚印数据
+    int count = static_cast<int>(std::min(_footprints.size(), size_t(100)));
+    float currentTime = static_cast<float>(glfwGetTime());
+
+    for (int i = 0; i < count; i++) {
+        glm::vec3 pos = std::get<0>(_footprints[i]);
+        float createTime = std::get<1>(_footprints[i]);
+        float age = currentTime - createTime;
+        float intensity = glm::clamp(1.0f - (age / params.decayTime), 0.0f, 1.0f);
+
+        _footprintShader->setUniformVec3("footprintPositions[" + std::to_string(i) + "]", pos);
+        _footprintShader->setUniformFloat("footprintIntensities[" + std::to_string(i) + "]",
+            intensity * params.fadeSpeed);
+    }
+
+    _footprintShader->setUniformInt("footprintCount", count);
+    _footprintShader->setUniformVec3("footprintColor", params.color);
+    _footprintShader->setUniformFloat("footprintRadius", params.radius);
+    _footprintShader->setUniformFloat("footprintDepth", params.depth);
+    //_footprintShader->setUniformVec2("resolution", glm::vec2(1024, 1024));
+
+    // 绘制
+    glBindVertexArray(renderVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    // 应用模糊
+    applyBlur();
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+
+
+void FootprintSystem::applyBlur() {
+    bool horizontal = true;
+    bool first_iteration = true;
+
+    // 创建blur用的VAO（如果还没有）
+    static GLuint blurVAO = 0;
+    static GLuint blurVBO = 0;
+    if (blurVAO == 0) {
+        float quadVertices[] = {
+            -1.0f,  1.0f, 0.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 0.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+
+            -1.0f,  1.0f, 0.0f, 1.0f,
+             1.0f, -1.0f, 1.0f, 0.0f,
+             1.0f,  1.0f, 1.0f, 1.0f
+        };
+
+        glGenVertexArrays(1, &blurVAO);
+        glGenBuffers(1, &blurVBO);
+
+        glBindVertexArray(blurVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, blurVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glBindVertexArray(0);
+    }
+
+    for (unsigned int i = 0; i < 2; i++) {
+        glBindFramebuffer(GL_FRAMEBUFFER, _pingpongFBO[horizontal]);
+        _blurShader->use();
+        _blurShader->setUniformBool("horizontal", horizontal);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, first_iteration ? _footprintTexture : _pingpongTexture[!horizontal]);
+
+        glBindVertexArray(blurVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        horizontal = !horizontal;
+        if (first_iteration) first_iteration = false;
+    }
+
+    // 最后结果存回_footprintTexture
+    glBindFramebuffer(GL_FRAMEBUFFER, _footprintFBO);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    _blurShader->use();
+    _blurShader->setUniformBool("horizontal", false);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, _pingpongTexture[!horizontal]);
+
+    glBindVertexArray(blurVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+}
+
+void FootprintSystem::renderUI(bool& showEditor) {
+    if (!ImGui::Begin("Footprint Editor", &showEditor)) {
+        ImGui::End();  // 关键：即使窗口折叠也要调用 End()
+        return;
+    }
+
+    params.renderEditorUI();
+
+    ImGui::Separator();
+    ImGui::Text("Footprint Count: %zu", _footprints.size());
+
+    if (ImGui::Button("Clear All Footprints")) {
+        _footprints.clear();
+    }
+
+
+
+    ImGui::End();
+}
+
+
