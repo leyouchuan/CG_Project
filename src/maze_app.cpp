@@ -316,7 +316,7 @@ void MazeApp::createMeshVAOs() {
 }
 
 void MazeApp::updateCamera(float deltaTime) {
-    // ★★★ 添加这个if ★★★
+    // 添加if
     if (_mouseControlEnabled) {
         double xpos, ypos;
         glfwGetCursorPos(_window, &xpos, &ypos);
@@ -341,9 +341,9 @@ void MazeApp::updateCamera(float deltaTime) {
 
         _camera.transform.rotation = glm::quatLookAt(front, Transform::getDefaultUp());
 
-        glfwSetCursorPos(_window, _windowWidth / 2, _windowHeight / 2);  // ← 这行也要在if里
+        glfwSetCursorPos(_window, _windowWidth / 2, _windowHeight / 2);  //这行也要在if里
     }
-    // ★★★ if结束，鼠标代码到此为止 ★★★
+    // if结束，鼠标代码到此为止
 
     glm::vec3 dir(0.0f);
     glm::vec3 horizontalFront = _camera.transform.getFront();
@@ -378,7 +378,13 @@ void MazeApp::updateCamera(float deltaTime) {
     if (!collided) {
         _camera.move(dir * _moveSpeed * deltaTime);
 
-        // ★★★ 新的脚印逻辑：在移动后调用 ★★★
+        // 限制摄像机最低高度（不能低于雪地表面）
+        const float minCameraHeight = -2.0f + 1.0f;  // 雪地表面上方0.5单位（视角高度）
+        if (_camera.transform.position.y < minCameraHeight) {
+            _camera.transform.position.y = minCameraHeight;
+        }
+
+        // 新的脚印逻辑：在移动后调用
         _footprintSystem.updateFootprints(_camera.transform.position);
     }
 
@@ -416,14 +422,14 @@ void MazeApp::updateStars(float deltaTime) {
 
             sm.transform.rotation = rotationY * rotationX * rotationZ;
 
-            // 增强的bulingbuling发光特效：多重频率叠加
+            // 发光：多重频率叠加
             float glowIntensity1 = 0.8f + 0.4f * sin(sm.starTime * 5.0f);  // 快速闪烁
             float glowIntensity2 = 0.9f + 0.3f * sin(sm.starTime * 8.0f + 1.0f);  // 更快速闪烁
             float glowIntensity3 = 0.7f + 0.5f * sin(sm.starTime * 2.0f + 2.0f);  // 慢速闪烁
 
             float combinedGlow = (glowIntensity1 * 0.4f + glowIntensity2 * 0.3f + glowIntensity3 * 0.3f);
 
-            // 丰富的星光颜色变化：彩虹般的渐变效果
+            // 丰富的星光颜色变化：渐变效果
             float goldPhase = sin(sm.starTime * 2.5f + sm.transform.position.x * 0.1f);
             float redPhase = 0.9f + 0.1f * goldPhase;
             float greenPhase = 0.7f + 0.2f * goldPhase;
@@ -786,12 +792,12 @@ MazeApp::MazeApp(const Options& options)
             float groundLength = 1000.0f;
 
             float snowThickness = 0.05f;                     // 雪地厚度
-            float snowCenterY = groundY + snowThickness * 0.5f; // ✅ 关键：保证雪地底部=groundY
+            float snowCenterY = groundY + snowThickness * 0.5f; // 保证雪地底部=groundY
 
             // 主地面 - 中心区域
             SceneModel ground;
             ground.model = snowModel;
-            ground.transform.position = glm::vec3(0.0f, snowCenterY, 0.0f);   // ✅ 用 snowCenterY
+            ground.transform.position = glm::vec3(0.0f, snowCenterY, 0.0f);   // 用 snowCenterY
             ground.transform.scale = glm::vec3(groundWidth / 2.0f, snowThickness, groundLength / 2.0f);
 
             ground.fallbackColor = glm::vec3(0.96f, 0.96f, 1.01f);
@@ -888,10 +894,10 @@ MazeApp::MazeApp(const Options& options)
                 continue; // 跳过迷宫区域内的位置
             }
 
-            // 3. 计算树木Y轴位置 - 直接放在地面
+            // 3. 计算树木Y轴位置 
             float treeScale = scaleDist(gen);
             float treeHalfHeight = (treeBaseHeight / 2.0f) * treeScale;
-            float treePosY = groundY + treeHalfHeight - 2.5f;  // ← 修改这行
+            float treePosY = groundY + treeHalfHeight - 2.5f;
 
             // 4. 构建最终树木位置
             glm::vec3 treePos(treeX, treePosY, treeZ);

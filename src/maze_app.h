@@ -59,7 +59,7 @@ private:
     float _footprintStepDistance = 0.8f;
     bool _hasLastFootprint = false;
     float _groundY = -2.0f;  // 实际地面高度！
-    float _groundTolerance = 0.5f;
+    float _groundTolerance = 1.0f;
 
     //void updateFootprints(const glm::vec3& cameraPosition);  // 函数声明
 
