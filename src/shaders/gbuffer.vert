@@ -7,6 +7,7 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
 uniform mat3 normalMatrix;
+uniform float time;  // 声明时间uniform以在片段着色器中使用
 
 out vec3 FragPos;   // world space
 out vec3 Normal;    // world space
