@@ -41,15 +41,15 @@ float snowNoise(vec2 uv) {
 
 // 雪的表面细节函数
 float snowSurfaceDetail(vec3 position, vec3 normal) {
-    // 基于位置创建简单的噪点图案
+
     vec2 uv = position.xz * 0.1;
-    float noise = snowNoise(uv);
     
     // 混合多个噪声频率
+    float noise = snowNoise(uv);
     noise += snowNoise(uv * 2.0) * 0.5;
     noise += snowNoise(uv * 4.0) * 0.25;
     
-    return noise * 0.1; // 轻微的表面变化
+    return noise * 0.1;
 }
 
 void main() {
@@ -120,7 +120,6 @@ void main() {
         FragColor = vec4(min(color, vec3(1.0)), 1.0);
 
     } else {
-        // 其他物体的标准渲染（简化版，不使用Material Editor）
         
         // 使用G-Buffer的albedo
         vec3 objectColor = albedo;
